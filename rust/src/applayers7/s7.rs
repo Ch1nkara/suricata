@@ -227,13 +227,43 @@ impl S7State {
 /// as a string followed by a ':', we look at up to the first 10
 /// characters for that pattern.
 fn probe(input: &[u8]) -> nom::IResult<&[u8], ()> {
-    let size = std::cmp::min(10, input.len());
-    let (rem, prefix) = nom::bytes::complete::take(size)(input)?;
-    nom::sequence::terminated(
-        nom::bytes::complete::take_while1(nom::character::is_digit),
-        nom::bytes::complete::tag(":"),
-    )(prefix)?;
-    Ok((rem, ()))
+    //SCLogNotice!("input(13): {}, 0x21: {}", input[13], 0x21u8);
+    //let size = std::cmp::min(2, input.len());
+    //let (rem, prefix) = nom::bytes::complete::take(size)(input)?;
+    //SCLogNotice!("rem: {:?}", rem);
+    //nom::bytes::complete::tag(":")(prefix)?;
+
+    SCLogNotice!("in prober function");
+    let size = std::cmp::min(7, input.len());
+    let (rem, _prefix) = nom::bytes::complete::take(size)(input)?;
+    SCLogNotice!("len: {}, rem: {:?}",input.len(), rem);
+
+    //TODO add some verification
+    if  input.len() > 7 && 
+        input[7] == 0x32u8 {
+        SCLogNotice!("SUCCESS");
+        return Ok((rem, ()))
+    }
+
+    SCLogNotice!("FAILED");
+    return Err(nom::Err::Error(nom::error::make_error(input, nom::error::ErrorKind::Verify)))
+
+
+
+    //let size = std::cmp::min(20, input.len());
+    //let (rem, prefix) = nom::bytes::complete::take(size)(input)?;
+    //SCLogNotice!("rem: {:?}", rem);
+    //
+    //nom::sequence::terminated(
+    //    nom::bytes::complete::take_while1(nom::character::is_digit),
+    //    nom::bytes::complete::tag("!"),
+    //)(prefix)?;
+
+
+
+    //SCLogNotice!("SUCCESS");
+    //Ok((rem, ()))
+
 }
 
 // C exports.
@@ -379,7 +409,7 @@ const PARSER_NAME: &[u8] = b"s7\0";
 
 #[no_mangle]
 pub unsafe extern "C" fn rs_s7_register_parser() {
-    let default_port = CString::new("[7000]").unwrap();
+    let default_port = CString::new("[102]").unwrap(); /* default s7 port */
     let parser = RustParser {
         name: PARSER_NAME.as_ptr() as *const c_char,
         default_port: default_port.as_ptr(),
