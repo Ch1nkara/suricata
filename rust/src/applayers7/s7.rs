@@ -26,6 +26,13 @@ use std::os::raw::{c_char, c_int, c_void};
 
 static mut ALPROTO_S7: AppProto = ALPROTO_UNKNOWN;
 
+const TPKT_VERSION: u8 = 0x03; /* TPKT version used  in S7 protocol */
+const TPKT_RESERVED: u8 = 0x00; /* TPKT reserved byte used  in S7 protocol */
+const TPKT_INIT_LENGTH_1: u8 = 0x00; /* frame length in connect steps */
+const TPKT_INIT_LENGTH_2: u8 = 0x16; /* frame length in connect steps */
+const COTP_CONNECT_REQUEST: u8 = 0xE0; /* COTP initialisation codes */
+const COTP_CONNECT_CONFIRM: u8 = 0xD0; /* COTP initialisation codes */
+
 #[derive(AppLayerEvent)]
 enum S7Event {}
 
@@ -221,49 +228,37 @@ impl S7State {
     }
 }
 
-/// Probe for a valid header.
-///
-/// As this s7 protocol uses messages prefixed with the size
-/// as a string followed by a ':', we look at up to the first 10
-/// characters for that pattern.
+/* Probe for a s7 protocol. Since S7 is built on top of COTP,
+*  tcp connection is considered using s7 protocol if :
+*   - on port 102
+*   - valid COTP connection on top of TCP 
+* Not perfect but sufficient 
+*/
 fn probe(input: &[u8]) -> nom::IResult<&[u8], ()> {
-    //SCLogNotice!("input(13): {}, 0x21: {}", input[13], 0x21u8);
-    //let size = std::cmp::min(2, input.len());
-    //let (rem, prefix) = nom::bytes::complete::take(size)(input)?;
-    //SCLogNotice!("rem: {:?}", rem);
-    //nom::bytes::complete::tag(":")(prefix)?;
-
+    /*DEBUG*/
     SCLogNotice!("in prober function");
-    let size = std::cmp::min(7, input.len());
-    let (rem, _prefix) = nom::bytes::complete::take(size)(input)?;
-    SCLogNotice!("len: {}, rem: {:?}",input.len(), rem);
-
-    //TODO add some verification
-    if  input.len() > 7 && 
-        input[7] == 0x32u8 {
-        SCLogNotice!("SUCCESS");
-        return Ok((rem, ()))
+    /* fail probe if pdu not the right size */
+    if ! input.len() == 22 { 
+        SCLogNotice!("/!\\ LENGTH NOT 22 /!\\");
+        return Err(nom::Err::Error(nom::error::make_error(input, nom::error::ErrorKind::Verify)))
     }
 
+    let (cotp_payload, tpkt_payload) = nom::bytes::complete::take(4usize)(input)?;
+    /*DEBUG*/
+    //SCLogNotice!("cotp_payload: {:x?}\ntpkt_payload: {:?}", cotp_payload, tpkt_payload);
+
+    /* fail probe if not the proper COTP initialisation */
+    if tpkt_payload != [TPKT_VERSION, TPKT_RESERVED, TPKT_INIT_LENGTH_1, TPKT_INIT_LENGTH_2] || 
+       (cotp_payload[1] != COTP_CONNECT_REQUEST && cotp_payload[1] != COTP_CONNECT_CONFIRM)
+    {
+        /*DEBUG*/
     SCLogNotice!("FAILED");
     return Err(nom::Err::Error(nom::error::make_error(input, nom::error::ErrorKind::Verify)))
+    }
 
-
-
-    //let size = std::cmp::min(20, input.len());
-    //let (rem, prefix) = nom::bytes::complete::take(size)(input)?;
-    //SCLogNotice!("rem: {:?}", rem);
-    //
-    //nom::sequence::terminated(
-    //    nom::bytes::complete::take_while1(nom::character::is_digit),
-    //    nom::bytes::complete::tag("!"),
-    //)(prefix)?;
-
-
-
-    //SCLogNotice!("SUCCESS");
-    //Ok((rem, ()))
-
+    /*DEBUG*/
+    SCLogNotice!("SUCCESS");
+    return Ok((&[], ()))
 }
 
 // C exports.
