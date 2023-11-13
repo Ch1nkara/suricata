@@ -239,13 +239,10 @@ fn probe(input: &[u8]) -> nom::IResult<&[u8], ()> {
     SCLogNotice!("in prober function");
     /* fail probe if pdu not the right size */
     if ! input.len() == 22 { 
-        SCLogNotice!("/!\\ LENGTH NOT 22 /!\\");
         return Err(nom::Err::Error(nom::error::make_error(input, nom::error::ErrorKind::Verify)))
     }
 
     let (cotp_payload, tpkt_payload) = nom::bytes::complete::take(4usize)(input)?;
-    /*DEBUG*/
-    //SCLogNotice!("cotp_payload: {:x?}\ntpkt_payload: {:?}", cotp_payload, tpkt_payload);
 
     /* fail probe if not the proper COTP initialisation */
     if tpkt_payload != [TPKT_VERSION, TPKT_RESERVED, TPKT_INIT_LENGTH_1, TPKT_INIT_LENGTH_2] || 
