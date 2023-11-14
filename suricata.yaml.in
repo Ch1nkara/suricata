@@ -156,6 +156,7 @@ outputs:
         header: X-Forwarded-For
 
       types:
+        - s8
         - s7
         - alert:
             # payload: yes             # enable dumping payload in Base64

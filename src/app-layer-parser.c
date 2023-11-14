@@ -1768,6 +1768,7 @@ void AppLayerParserRegisterProtocolParsers(void)
     RegisterSIPParsers();
     RegisterQuicParsers();
     rs_s7_register_parser();
+    rs_s8_register_parser();
     rs_template_register_parser();
     RegisterRFBParsers();
     RegisterMQTTParsers();

@@ -61,6 +61,7 @@ const AppProtoStringTuple AppProtoStrings[ALPROTO_MAX] = {
     { ALPROTO_PGSQL, "pgsql" },
     { ALPROTO_TELNET, "telnet" },
     { ALPROTO_S7, "s7" },
+    { ALPROTO_S8, "s8" },
     { ALPROTO_TEMPLATE, "template" },
     { ALPROTO_RDP, "rdp" },
     { ALPROTO_HTTP2, "http2" },

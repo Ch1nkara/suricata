@@ -79,6 +79,7 @@
 #include "output-json-mqtt.h"
 #include "output-json-pgsql.h"
 #include "output-json-s7.h"
+#include "output-json-s8.h"
 #include "output-json-template.h"
 #include "output-json-rdp.h"
 #include "output-json-http2.h"
@@ -1118,6 +1119,8 @@ void OutputRegisterLoggers(void)
     JsonPgsqlLogRegister();
     /* S7 JSON logger. */
     JsonS7LogRegister();
+    /* S8 JSON logger. */
+    JsonS8LogRegister();
     /* Template JSON logger. */
     JsonTemplateLogRegister();
     /* RDP JSON logger. */
