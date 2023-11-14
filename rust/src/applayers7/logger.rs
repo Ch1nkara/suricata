@@ -20,8 +20,10 @@ use crate::jsonbuilder::{JsonBuilder, JsonError};
 use std;
 
 fn log_s7(tx: &S7Transaction, js: &mut JsonBuilder) -> Result<(), JsonError> {
+    SCLogNotice!("into the logger");
+    js.open_object("s7")?;
     if let Some(ref request) = tx.request {
-        js.set_string("request", request)?;
+        js.set_string("function", request.function.to_str())?;
     }
     if let Some(ref response) = tx.response {
         js.set_string("response", response)?;

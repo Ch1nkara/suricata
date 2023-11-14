@@ -34,12 +34,14 @@ const TPKT_INIT_LENGTH_2: u8 = 0x16; /* frame length in connect steps */
 const COTP_CONNECT_REQUEST: u8 = 0xE0; /* COTP initialisation codes */
 const COTP_CONNECT_CONFIRM: u8 = 0xD0; /* COTP initialisation codes */
 
+const S7_PROTOCOLE_ID: u8 = 0x32; /* S7 protocol id code */
+
 #[derive(AppLayerEvent)]
 enum S7Event {}
 
 pub struct S7Transaction {
     tx_id: u64,
-    pub request: Option<String>,
+    pub request: Option<Request>,
     pub response: Option<String>,
 
     tx_data: AppLayerTxData,
@@ -128,14 +130,24 @@ impl S7State {
     }
 
     fn parse_request(&mut self, input: &[u8]) -> AppLayerResult {
-        // We're not interested in empty requests.
-        if input.is_empty() {
+        SCLogNotice!("start parse_request, input: {:x?}", input);
+        /* We're not interested in empty s7 requests */
+        if input.len() < 8 {
+            SCLogNotice!("req_parsing DONE, too short, length: {}", input.len());
+            return AppLayerResult::ok();
+        }
+
+        /* Final check to verify that this is a s7 frame*/
+        if input[7] != S7_PROTOCOLE_ID {
+            SCLogNotice!("req_parsing DONE, wrong protocol, id: {:x?}", input[7]);
             return AppLayerResult::ok();
         }
 
         // If there was gap, check we can sync up again.
+        //TODO how do we deal with gaps ?
         if self.request_gap {
             if probe(input).is_err() {
+                SCLogNotice!("req_parsing DONE, gap is true");
                 // The parser now needs to decide what to do as we are not in sync.
                 // For this s7, we'll just try again next time.
                 return AppLayerResult::ok();
@@ -148,16 +160,17 @@ impl S7State {
 
         let mut start = input;
         while !start.is_empty() {
-            match parser::parse_message(start) {
+            match parser::s7_parse_request(start) {
                 Ok((rem, request)) => {
+                    /* DEBUG */
+                    SCLogNotice!("parser::s7_parse_request returned OK");
                     start = rem;
-
-                    SCLogNotice!("Request: {}", request);
                     let mut tx = self.new_tx();
                     tx.request = Some(request);
                     self.transactions.push_back(tx);
                 }
                 Err(nom::Err::Incomplete(_)) => {
+                    SCLogNotice!("req_parser returned ERR Incomplete");
                     // Not enough data. This parser doesn't give us a good indication
                     // of how much data is missing so just ask for one more byte so the
                     // parse is called as soon as more data is received.
@@ -166,11 +179,12 @@ impl S7State {
                     return AppLayerResult::incomplete(consumed as u32, needed as u32);
                 }
                 Err(_) => {
+                    SCLogNotice!("req_parser returned ERR2, else");
                     return AppLayerResult::err();
                 }
             }
         }
-
+        SCLogNotice!("req_parsing DONE, everything seems fine, input: {:x?}", input);
         // Input was fully consumed.
         return AppLayerResult::ok();
     }
