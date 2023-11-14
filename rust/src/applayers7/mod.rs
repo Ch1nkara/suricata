@@ -20,3 +20,4 @@
 pub mod logger;
 mod parser;
 pub mod s7;
+mod s7_constants;

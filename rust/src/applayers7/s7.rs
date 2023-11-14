@@ -16,6 +16,7 @@
  */
 
 use super::parser;
+use super::s7_constants::Request;
 use crate::applayer::{self, *};
 use crate::core::{AppProto, Flow, ALPROTO_UNKNOWN, IPPROTO_TCP};
 use nom7 as nom;

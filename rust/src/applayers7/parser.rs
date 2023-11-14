@@ -21,6 +21,7 @@ use nom7::{
     IResult,
 };
 use std;
+use super::s7_constants::{S7Functions, Request};
 
 fn parse_len(input: &str) -> Result<u32, std::num::ParseIntError> {
     input.parse::<u32>()
