@@ -52,14 +52,14 @@ static int g_s7_rust_id = 0;
 
 void DetectS7S7Register(void)
 {
-    sigmatch_table[DETECT_AL_S7_BUFFER].name = "s7_s7";
-    sigmatch_table[DETECT_AL_S7_BUFFER].desc =
+    sigmatch_table[DETECT_AL_S7_S7].name = "s7_s7";
+    sigmatch_table[DETECT_AL_S7_S7].desc =
             "S7 content modifier to match on the s7 buffers";
-    sigmatch_table[DETECT_AL_S7_BUFFER].Setup = DetectS7S7Setup;
+    sigmatch_table[DETECT_AL_S7_S7].Setup = DetectS7S7Setup;
 #ifdef UNITTESTS
-    sigmatch_table[DETECT_AL_S7_BUFFER].RegisterTests = DetectS7S7RegisterTests;
+    sigmatch_table[DETECT_AL_S7_S7].RegisterTests = DetectS7S7RegisterTests;
 #endif
-    sigmatch_table[DETECT_AL_S7_BUFFER].flags |= SIGMATCH_NOOPT;
+    sigmatch_table[DETECT_AL_S7_S7].flags |= SIGMATCH_NOOPT;
 
     /* register inspect engines */
     DetectAppLayerInspectEngineRegister2("s7_buffer", ALPROTO_S7, SIG_FLAG_TOSERVER, 0,
