@@ -197,6 +197,7 @@
 #include "detect-sip-stat-msg.h"
 #include "detect-sip-request-line.h"
 #include "detect-sip-response-line.h"
+#include "detect-s8-protocontent.h"
 #include "detect-rfb-secresult.h"
 #include "detect-rfb-sectype.h"
 #include "detect-rfb-name.h"
@@ -643,6 +644,7 @@ void SigTableSetup(void)
     DetectKrb5MsgTypeRegister();
     DetectKrb5SNameRegister();
     DetectKrb5TicketEncryptionRegister();
+    DetectS8protocontentRegister();
     DetectSipMethodRegister();
     DetectSipUriRegister();
     DetectSipProtocolRegister();

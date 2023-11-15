@@ -103,6 +103,7 @@ pub mod rfb;
 pub mod mqtt;
 pub mod pgsql;
 pub mod telnet;
+pub mod applayers8;
 pub mod applayertemplate;
 pub mod rdp;
 pub mod x509;

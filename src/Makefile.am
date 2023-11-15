@@ -281,6 +281,7 @@ noinst_HEADERS = \
 	detect-rfb-secresult.h \
 	detect-rfb-sectype.h \
 	detect-rpc.h \
+	detect-s8-protocontent.h \
 	detect-sameip.h \
 	detect-sid.h \
 	detect-sip-method.h \
@@ -424,6 +425,7 @@ noinst_HEADERS = \
 	output-json-snmp.h \
 	output-json-ssh.h \
 	output-json-stats.h \
+	output-json-s8.h \
 	output-json-template.h \
 	output-json-tftp.h \
 	output-json-tls.h \
@@ -890,6 +892,7 @@ libsuricata_c_a_SOURCES = \
 	detect-rfb-secresult.c \
 	detect-rfb-sectype.c \
 	detect-rpc.c \
+	detect-s8-protocontent.c \
 	detect-sameip.c \
 	detect-sid.c \
 	detect-sip-method.c \
@@ -1033,6 +1036,7 @@ libsuricata_c_a_SOURCES = \
 	output-json-snmp.c \
 	output-json-ssh.c \
 	output-json-stats.c \
+	output-json-s8.c \
 	output-json-template.c \
 	output-json-tftp.c \
 	output-json-tls.c \
