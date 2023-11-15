@@ -281,6 +281,7 @@ noinst_HEADERS = \
 	detect-rfb-secresult.h \
 	detect-rfb-sectype.h \
 	detect-rpc.h \
+	detect-s7-s7.h \
 	detect-sameip.h \
 	detect-sid.h \
 	detect-sip-method.h \
@@ -892,6 +893,7 @@ libsuricata_c_a_SOURCES = \
 	detect-rfb-secresult.c \
 	detect-rfb-sectype.c \
 	detect-rpc.c \
+	detect-s7-s7.c \
 	detect-sameip.c \
 	detect-sid.c \
 	detect-sip-method.c \
