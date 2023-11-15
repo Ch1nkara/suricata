@@ -20,3 +20,4 @@
 pub mod logger;
 mod parser;
 pub mod s7;
+pub mod detect;
