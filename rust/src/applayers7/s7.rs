@@ -333,6 +333,41 @@ unsafe extern "C" fn rs_s7_tx_get_alstate_progress(tx: *mut c_void, _direction: 
     return 0;
 }
 
+/// Get the request buffer for a transaction from C.
+///
+/// No required for parsing, but an example function for retrieving a
+/// pointer to the request buffer from C for detection.
+#[no_mangle]
+pub unsafe extern "C" fn rs_s7_get_request_buffer(
+    tx: *mut c_void, buf: *mut *const u8, len: *mut u32,
+) -> u8 {
+    let tx = cast_pointer!(tx, S7Transaction);
+    if let Some(ref request) = tx.request {
+        if !request.is_empty() {
+            *len = request.len() as u32;
+            *buf = request.as_ptr();
+            return 1;
+        }
+    }
+    return 0;
+}
+
+/// Get the response buffer for a transaction from C.
+#[no_mangle]
+pub unsafe extern "C" fn rs_s7_get_response_buffer(
+    tx: *mut c_void, buf: *mut *const u8, len: *mut u32,
+) -> u8 {
+    let tx = cast_pointer!(tx, S7Transaction);
+    if let Some(ref response) = tx.response {
+        if !response.is_empty() {
+            *len = response.len() as u32;
+            *buf = response.as_ptr();
+            return 1;
+        }
+    }
+    return 0;
+}
+
 export_tx_data_get!(rs_s7_get_tx_data, S7Transaction);
 export_state_data_get!(rs_s7_get_state_data, S7State);
 
