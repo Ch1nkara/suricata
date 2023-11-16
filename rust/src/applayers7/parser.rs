@@ -21,9 +21,30 @@ use nom7::{
     IResult,
 };
 use std;
+use super::s7_constant::{S7Function, Request};
 
 fn parse_len(input: &str) -> Result<u32, std::num::ParseIntError> {
     input.parse::<u32>()
+}
+
+pub fn s7_parse_request(i: &[u8]) -> IResult<&[u8], Request> {
+    SCLogNotice!("in request parser, input: {:x?}", i);
+    let (i, _headers) = take(17_usize)(i)?;
+    let (i, function) = take(1_usize)(i)?;
+    SCLogNotice!("function: {:x?}", function);
+    let mut func;
+    match function {
+        [0x04u8] => func = S7Function::ReadVariable,
+        _ => return Err(nom7::Err::Error(nom7::error::make_error(i, nom7::error::ErrorKind::Verify)))
+        ,
+    };
+    SCLogNotice!("func: {:x?}", func);
+    Ok((
+        &[], 
+        Request {
+            function: func,
+        }
+    ))
 }
 
 pub fn parse_message(i: &[u8]) -> IResult<&[u8], String> {

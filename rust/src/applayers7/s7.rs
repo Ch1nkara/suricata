@@ -16,7 +16,13 @@
  */
 
 use super::parser;
-use super::s7_constants::Request;
+use super::s7_constant::{Request};
+use super::s7_constant::{
+    INIT_FRAME_LENGTH, INIT_TPKT_VERSION, INIT_TPKT_RESERVED,
+    INIT_TPKT_INIT_LENGTH_1, INIT_TPKT_INIT_LENGTH_2,
+    COTP_CONNECT_REQUEST, COTP_CONNECT_CONFIRM, S7_PROTOCOLE_ID
+};
+
 use crate::applayer::{self, *};
 use crate::core::{AppProto, Flow, ALPROTO_UNKNOWN, IPPROTO_TCP};
 use nom7 as nom;
@@ -121,14 +127,24 @@ impl S7State {
     }
 
     fn parse_request(&mut self, input: &[u8]) -> AppLayerResult {
-        // We're not interested in empty requests.
-        if input.is_empty() {
+        SCLogNotice!("start parse_request, input: {:x?}", input);
+        /* We're not interested in empty s7 requests */
+        if input.len() < 8 {
+            SCLogNotice!("req_parsing DONE, too short, length: {}", input.len());
+            return AppLayerResult::ok();
+        }
+
+        /* Final check to verify that this is a s7 frame*/
+        if input[7] != S7_PROTOCOLE_ID {
+            SCLogNotice!("req_parsing DONE, wrong protocol, id: {:x?}", input[7]);
             return AppLayerResult::ok();
         }
 
         // If there was gap, check we can sync up again.
+        //TODO how do we deal with gaps ?
         if self.request_gap {
             if probe(input).is_err() {
+                SCLogNotice!("req_parsing DONE, gap is true");
                 // The parser now needs to decide what to do as we are not in sync.
                 // For this s7, we'll just try again next time.
                 return AppLayerResult::ok();
@@ -141,16 +157,17 @@ impl S7State {
 
         let mut start = input;
         while !start.is_empty() {
-            match parser::parse_message(start) {
+            match parser::s7_parse_request(start) {
                 Ok((rem, request)) => {
+                    /* DEBUG */
+                    SCLogNotice!("parser::s7_parse_request returned OK");
                     start = rem;
-
-                    SCLogNotice!("Request: {}", request);
                     let mut tx = self.new_tx();
                     tx.request = Some(request);
                     self.transactions.push_back(tx);
                 }
                 Err(nom::Err::Incomplete(_)) => {
+                    SCLogNotice!("req_parser returned ERR Incomplete");
                     // Not enough data. This parser doesn't give us a good indication
                     // of how much data is missing so just ask for one more byte so the
                     // parse is called as soon as more data is received.
@@ -159,11 +176,12 @@ impl S7State {
                     return AppLayerResult::incomplete(consumed as u32, needed as u32);
                 }
                 Err(_) => {
+                    SCLogNotice!("req_parser returned ERR2, else");
                     return AppLayerResult::err();
                 }
             }
         }
-
+        SCLogNotice!("req_parsing DONE, everything seems fine, input: {:x?}", input);
         // Input was fully consumed.
         return AppLayerResult::ok();
     }
@@ -192,14 +210,17 @@ fn probe(input: &[u8]) -> nom::IResult<&[u8], ()> {
     /*DEBUG*/
     SCLogNotice!("in prober function");
     /* fail probe if pdu not the right size */
-    if ! input.len() == 22 { 
+    if ! input.len() == INIT_FRAME_LENGTH { 
         return Err(nom::Err::Error(nom::error::make_error(input, nom::error::ErrorKind::Verify)))
     }
 
     let (cotp_payload, tpkt_payload) = nom::bytes::complete::take(4_usize)(input)?;
 
     /* fail probe if not the proper COTP initialisation */
-    if tpkt_payload != [TPKT_VERSION, TPKT_RESERVED, TPKT_INIT_LENGTH_1, TPKT_INIT_LENGTH_2] || 
+    if tpkt_payload != [INIT_TPKT_VERSION, 
+                        INIT_TPKT_RESERVED, 
+                        INIT_TPKT_INIT_LENGTH_1, 
+                        INIT_TPKT_INIT_LENGTH_2] || 
        (cotp_payload[1] != COTP_CONNECT_REQUEST && cotp_payload[1] != COTP_CONNECT_CONFIRM)
     {
         /*DEBUG*/
@@ -312,41 +333,6 @@ unsafe extern "C" fn rs_s7_tx_get_alstate_progress(tx: *mut c_void, _direction: 
     return 0;
 }
 
-/// Get the request buffer for a transaction from C.
-///
-/// No required for parsing, but an example function for retrieving a
-/// pointer to the request buffer from C for detection.
-#[no_mangle]
-pub unsafe extern "C" fn rs_s7_get_request_buffer(
-    tx: *mut c_void, buf: *mut *const u8, len: *mut u32,
-) -> u8 {
-    let tx = cast_pointer!(tx, S7Transaction);
-    if let Some(ref request) = tx.request {
-        if !request.is_empty() {
-            *len = request.len() as u32;
-            *buf = request.as_ptr();
-            return 1;
-        }
-    }
-    return 0;
-}
-
-/// Get the response buffer for a transaction from C.
-#[no_mangle]
-pub unsafe extern "C" fn rs_s7_get_response_buffer(
-    tx: *mut c_void, buf: *mut *const u8, len: *mut u32,
-) -> u8 {
-    let tx = cast_pointer!(tx, S7Transaction);
-    if let Some(ref response) = tx.response {
-        if !response.is_empty() {
-            *len = response.len() as u32;
-            *buf = response.as_ptr();
-            return 1;
-        }
-    }
-    return 0;
-}
-
 export_tx_data_get!(rs_s7_get_tx_data, S7Transaction);
 export_state_data_get!(rs_s7_get_state_data, S7State);
 
@@ -403,73 +389,4 @@ pub unsafe extern "C" fn rs_s7_register_parser() {
     }
 }
 
-#[cfg(test)]
-mod test {
-    use super::*;
-
-    #[test]
-    fn test_probe() {
-        assert!(probe(b"1").is_err());
-        assert!(probe(b"1:").is_ok());
-        assert!(probe(b"123456789:").is_ok());
-        assert!(probe(b"0123456789:").is_err());
-    }
-
-    #[test]
-    fn test_incomplete() {
-        let mut state = S7State::new();
-        let buf = b"5:Hello3:bye";
-
-        let r = state.parse_request(&buf[0..0]);
-        assert_eq!(
-            r,
-            AppLayerResult {
-                status: 0,
-                consumed: 0,
-                needed: 0
-            }
-        );
-
-        let r = state.parse_request(&buf[0..1]);
-        assert_eq!(
-            r,
-            AppLayerResult {
-                status: 1,
-                consumed: 0,
-                needed: 2
-            }
-        );
-
-        let r = state.parse_request(&buf[0..2]);
-        assert_eq!(
-            r,
-            AppLayerResult {
-                status: 1,
-                consumed: 0,
-                needed: 3
-            }
-        );
-
-        // This is the first message and only the first message.
-        let r = state.parse_request(&buf[0..7]);
-        assert_eq!(
-            r,
-            AppLayerResult {
-                status: 0,
-                consumed: 0,
-                needed: 0
-            }
-        );
-
-        // The first message and a portion of the second.
-        let r = state.parse_request(&buf[0..9]);
-        assert_eq!(
-            r,
-            AppLayerResult {
-                status: 1,
-                consumed: 7,
-                needed: 3
-            }
-        );
-    }
-}
+//TODO unit tests
