@@ -55,7 +55,7 @@ static int DetectS7Match(DetectEngineThreadCtx *det_ctx, Flow *f, uint8_t flags,
 
 void DetectS7S7Register(void)
 {
-    sigmatch_table[DETECT_AL_S7_S7].name = "s7_s7";
+    sigmatch_table[DETECT_AL_S7_S7].name = "s7";
     sigmatch_table[DETECT_AL_S7_S7].desc =
             "S7 content modifier to match on the s7 buffers";
     sigmatch_table[DETECT_AL_S7_S7].Setup = DetectS7S7Setup;

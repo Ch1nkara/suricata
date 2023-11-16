@@ -16,6 +16,7 @@
  */
 
 use super::parser;
+use super::s7_constants::Request;
 use crate::applayer::{self, *};
 use crate::core::{AppProto, Flow, ALPROTO_UNKNOWN, IPPROTO_TCP};
 use nom7 as nom;
@@ -31,7 +32,7 @@ enum S7Event {}
 
 pub struct S7Transaction {
     tx_id: u64,
-    pub request: Option<String>,
+    pub request: Option<Request>,
     pub response: Option<String>,
 
     tx_data: AppLayerTxData,
@@ -168,46 +169,6 @@ impl S7State {
     }
 
     fn parse_response(&mut self, input: &[u8]) -> AppLayerResult {
-        // We're not interested in empty responses.
-        if input.is_empty() {
-            return AppLayerResult::ok();
-        }
-
-        if self.response_gap {
-            if probe(input).is_err() {
-                // The parser now needs to decide what to do as we are not in sync.
-                // For this s7, we'll just try again next time.
-                return AppLayerResult::ok();
-            }
-
-            // It looks like we're in sync with a message header, clear gap
-            // state and keep parsing.
-            self.response_gap = false;
-        }
-        let mut start = input;
-        while !start.is_empty() {
-            match parser::parse_message(start) {
-                Ok((rem, response)) => {
-                    start = rem;
-
-                    if let Some(tx) = self.find_request() {
-                        tx.response = Some(response);
-                        SCLogNotice!("Found response for request:");
-                        SCLogNotice!("- Request: {:?}", tx.request);
-                        SCLogNotice!("- Response: {:?}", tx.response);
-                    }
-                }
-                Err(nom::Err::Incomplete(_)) => {
-                    let consumed = input.len() - start.len();
-                    let needed = start.len() + 1;
-                    return AppLayerResult::incomplete(consumed as u32, needed as u32);
-                }
-                Err(_) => {
-                    return AppLayerResult::err();
-                }
-            }
-        }
-
         // All input was fully consumed.
         return AppLayerResult::ok();
     }
@@ -221,19 +182,34 @@ impl S7State {
     }
 }
 
-/// Probe for a valid header.
-///
-/// As this s7 protocol uses messages prefixed with the size
-/// as a string followed by a ':', we look at up to the first 10
-/// characters for that pattern.
+/* Probe for a s7 protocol. Since S7 is built on top of COTP,
+*  tcp connection is considered using s7 protocol if :
+*   - on port 102
+*   - valid COTP connection on top of TCP 
+* Not perfect but sufficient 
+*/
 fn probe(input: &[u8]) -> nom::IResult<&[u8], ()> {
-    let size = std::cmp::min(10, input.len());
-    let (rem, prefix) = nom::bytes::complete::take(size)(input)?;
-    nom::sequence::terminated(
-        nom::bytes::complete::take_while1(nom::character::is_digit),
-        nom::bytes::complete::tag(":"),
-    )(prefix)?;
-    Ok((rem, ()))
+    /*DEBUG*/
+    SCLogNotice!("in prober function");
+    /* fail probe if pdu not the right size */
+    if ! input.len() == 22 { 
+        return Err(nom::Err::Error(nom::error::make_error(input, nom::error::ErrorKind::Verify)))
+    }
+
+    let (cotp_payload, tpkt_payload) = nom::bytes::complete::take(4_usize)(input)?;
+
+    /* fail probe if not the proper COTP initialisation */
+    if tpkt_payload != [TPKT_VERSION, TPKT_RESERVED, TPKT_INIT_LENGTH_1, TPKT_INIT_LENGTH_2] || 
+       (cotp_payload[1] != COTP_CONNECT_REQUEST && cotp_payload[1] != COTP_CONNECT_CONFIRM)
+    {
+        /*DEBUG*/
+        SCLogNotice!("FAILED");
+        return Err(nom::Err::Error(nom::error::make_error(input, nom::error::ErrorKind::Verify)))
+    }
+
+    /*DEBUG*/
+    SCLogNotice!("SUCCESS");
+    return Ok((&[], ()))
 }
 
 // C exports.
@@ -379,7 +355,7 @@ const PARSER_NAME: &[u8] = b"s7\0";
 
 #[no_mangle]
 pub unsafe extern "C" fn rs_s7_register_parser() {
-    let default_port = CString::new("[7000]").unwrap();
+    let default_port = CString::new("[102]").unwrap();
     let parser = RustParser {
         name: PARSER_NAME.as_ptr() as *const c_char,
         default_port: default_port.as_ptr(),
