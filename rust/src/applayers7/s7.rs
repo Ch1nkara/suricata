@@ -36,6 +36,7 @@ static mut ALPROTO_S7: AppProto = ALPROTO_UNKNOWN;
 #[derive(AppLayerEvent)]
 enum S7Event {}
 
+#[derive(Debug)]
 pub struct S7Transaction {
     tx_id: u64,
     pub request: Option<Request>,

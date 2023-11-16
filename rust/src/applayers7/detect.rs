@@ -1,4 +1,5 @@
 use super::s7::S7Transaction;
+use super::s7_constant::Request;
 use super::s7_constant::S7Function;
 use std::ffi::CStr;
 use std::os::raw::{c_char, c_void};
@@ -12,16 +13,28 @@ pub struct DetectS7Signature {
 /// matches the signature. If it does, 1 is returned; otherwise 0 is returned.
 #[no_mangle]
 pub extern "C" fn rs_s7_inspect(tx: &S7Transaction, s7: &DetectS7Signature) -> u8 {
-    return 1;
+    SCLogNotice!("inspecting, transaction: {:?}", tx);
+    let mut tx_request: &Request;
+    match &tx.request {
+        Some(tx_r) => tx_request = tx_r,
+        _ => {SCLogNotice!("tx.request is NONE"); return 0}
+    }
+    if tx_request.function == s7.function {
+        SCLogNotice!("ALERT");
+        return 1
+    }
+    SCLogNotice!("no match");
+    return 0;
 }
 
-
+//TODO improve by match S7Function::from_str() or something like that
 fn parse_function(rule_str: &str) -> Result<DetectS7Signature, ()> {
     let mut s7: DetectS7Signature = Default::default();
     SCLogNotice!("rule_str: {}", rule_str);
     let mut words = rule_str.split_whitespace();
     match words.next() {
         Some("read") => s7.function = Some(S7Function::ReadVariable),
+        Some("write") => s7.function = Some(S7Function::WriteVariable),
         _ => {SCLogNotice!("couldn't parse first word: {:?}", words.next()); return Err(())}
     }
     SCLogNotice!("signature: {:?}", s7);
@@ -46,4 +59,11 @@ pub unsafe extern "C" fn rs_s7_parse(c_arg: *const c_char) -> *mut c_void {
         }
     }
     std::ptr::null_mut()
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn rs_s7_free(ptr: *mut c_void) {
+    if !ptr.is_null() {
+        let _ = Box::from_raw(ptr as *mut DetectS7Signature);
+    }
 }

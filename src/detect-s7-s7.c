@@ -53,6 +53,20 @@ static int DetectS7Match(DetectEngineThreadCtx *det_ctx, Flow *f, uint8_t flags,
     return rs_s7_inspect(txv, (void *)ctx);
 }
 
+/** \internal
+ *
+ * \brief this function will free memory associated with DetectModbus
+ *
+ * \param ptr pointer to DetectModbus
+ */
+static void DetectS7Free(DetectEngineCtx *de_ctx, void *ptr) {
+    SCEnter();
+    if (ptr != NULL) {
+        rs_s7_free(ptr);
+    }
+    SCReturn;
+}
+
 void DetectS7S7Register(void)
 {
     sigmatch_table[DETECT_AL_S7_S7].name = "s7";
@@ -65,13 +79,14 @@ void DetectS7S7Register(void)
     //sigmatch_table[DETECT_AL_S7_S7].flags |= SIGMATCH_NOOPT;
     sigmatch_table[DETECT_AL_S7_S7].Match = NULL;
     sigmatch_table[DETECT_AL_S7_S7].AppLayerTxMatch = DetectS7Match;
+    sigmatch_table[DETECT_AL_S7_S7].Free = DetectS7Free;
 
 
     /* register inspect engines */
-    DetectAppLayerInspectEngineRegister2("s7_buffer", ALPROTO_S7, SIG_FLAG_TOSERVER, 0,
-            DetectEngineInspectGenericList, NULL);
     DetectAppLayerInspectEngineRegister2("s7_buffer", ALPROTO_S7, SIG_FLAG_TOCLIENT, 0,
             DetectEngineInspectGenericList, NULL);
+    //DetectAppLayerInspectEngineRegister2("s7_buffer", ALPROTO_S7, SIG_FLAG_TOCLIENT, 0,
+            //DetectEngineInspectGenericList, NULL);
 
     g_s7_rust_id = DetectBufferTypeGetByName("s7_buffer");
 
@@ -81,7 +96,7 @@ void DetectS7S7Register(void)
 static int DetectS7S7Setup(DetectEngineCtx *de_ctx, Signature *s, const char *str)
 {
     SCEnter();
-    DetectModbusRust *s7 = NULL;
+    DetectS7Signature *s7 = NULL;
     SigMatch        *sm = NULL;
     s->init_data->list = g_s7_rust_id;
 

@@ -8,9 +8,10 @@ pub const COTP_CONNECT_CONFIRM: u8 = 0xD0; /* COTP initialisation codes */
 pub const S7_PROTOCOLE_ID: u8 = 0x32; /* S7 protocol id code */
 
 #[repr(u8)]
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum S7Function {
     ReadVariable = 0x04,
+    WriteVariable = 0x05,
 }
 
 impl std::str::FromStr for S7Function {
@@ -18,6 +19,7 @@ impl std::str::FromStr for S7Function {
     fn from_str(input_string: &str) -> Result<Self, Self::Err> {
         match input_string {
             "read" => Ok(S7Function::ReadVariable),
+            "write" => Ok(S7Function::WriteVariable),
             _ => Err(format!("'{}' is not a valid value for S7Function", input_string)),
         }
     }
@@ -33,5 +35,5 @@ impl std::str::FromStr for S7Function {
 
 #[derive(Debug)]
 pub struct Request {
-    pub function: S7Function,
+    pub function: Option<S7Function>,
 }

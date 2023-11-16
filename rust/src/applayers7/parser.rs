@@ -32,19 +32,11 @@ pub fn s7_parse_request(i: &[u8]) -> IResult<&[u8], Request> {
     let (i, _headers) = take(17_usize)(i)?;
     let (i, function) = take(1_usize)(i)?;
     SCLogNotice!("function: {:x?}", function);
-    let mut func;
-    match function {
-        [0x04u8] => func = S7Function::ReadVariable,
-        _ => return Err(nom7::Err::Error(nom7::error::make_error(i, nom7::error::ErrorKind::Verify)))
-        ,
+    return match function {
+        [0x04u8] => Ok((&[], Request {function: Some(S7Function::ReadVariable)})),
+        [0x05u8] => Ok((&[], Request {function: Some(S7Function::WriteVariable)})),
+        _ => Ok((&[], Request {function: None})),
     };
-    SCLogNotice!("func: {:x?}", func);
-    Ok((
-        &[], 
-        Request {
-            function: func,
-        }
-    ))
 }
 
 pub fn parse_message(i: &[u8]) -> IResult<&[u8], String> {
