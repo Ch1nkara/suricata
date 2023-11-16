@@ -15,19 +15,16 @@
  * 02110-1301, USA.
  */
 
-/*
- * TODO: Update the \author in this file and detect-s7.h.
- * TODO: Update description in the \file section below.
- * TODO: Remove SCLogNotice statements or convert to debug.
- */
-
 /**
  * \file
  *
  * \author FirstName LastName <yourname@domain>
  *
- * Set up of the "s7_rust" keyword to allow content
- * inspections on the decoded s7 application layer buffers.
+ * Set up of the "s7" keyword to allow detection.
+ * This imply registering to the detect engine and
+ * calling the following rust function:
+ *   - suricata rules parser
+ *   - matching a rule signature and a transaction
  */
 
 #include "suricata-common.h"
@@ -41,47 +38,40 @@
 #include "detect-engine-build.h"
 #include "rust.h"
 
-static int DetectS7S7Setup(DetectEngineCtx *, Signature *, const char *);
+
 #ifdef UNITTESTS
 static void DetectS7S7RegisterTests(void);
 #endif
 static int g_s7_rust_id = 0;
 
-static int DetectS7Match(DetectEngineThreadCtx *det_ctx, Flow *f, uint8_t flags, void *state,
-        void *txv, const Signature *s, const SigMatchCtx *ctx)
-{
-    return rs_s7_inspect(txv, (void *)ctx);
+/** \internal
+ *
+ * \brief this function will free memory associated with DetectS7
+ *
+ * \param ptr pointer to DetectS7
+ */
+static void DetectS7Free(DetectEngineCtx *de_ctx, void *ptr) {
+    SCEnter();
+    if (ptr != NULL) {
+        rs_s7_free(ptr);
+    }
+    SCReturn;
 }
 
-void DetectS7S7Register(void)
-{
-    sigmatch_table[DETECT_AL_S7_S7].name = "s7_s7";
-    sigmatch_table[DETECT_AL_S7_S7].desc =
-            "S7 content modifier to match on the s7 buffers";
-    sigmatch_table[DETECT_AL_S7_S7].Setup = DetectS7S7Setup;
-#ifdef UNITTESTS
-    sigmatch_table[DETECT_AL_S7_S7].RegisterTests = DetectS7S7RegisterTests;
-#endif
-    //sigmatch_table[DETECT_AL_S7_S7].flags |= SIGMATCH_NOOPT;
-    sigmatch_table[DETECT_AL_S7_S7].Match = NULL;
-    sigmatch_table[DETECT_AL_S7_S7].AppLayerTxMatch = DetectS7Match;
-
-
-    /* register inspect engines */
-    DetectAppLayerInspectEngineRegister2("s7_buffer", ALPROTO_S7, SIG_FLAG_TOSERVER, 0,
-            DetectEngineInspectGenericList, NULL);
-    DetectAppLayerInspectEngineRegister2("s7_buffer", ALPROTO_S7, SIG_FLAG_TOCLIENT, 0,
-            DetectEngineInspectGenericList, NULL);
-
-    g_s7_rust_id = DetectBufferTypeGetByName("s7_buffer");
-
-    SCLogNotice("S7 application layer detect registered.");
-}
-
+/** \internal
+ *
+ * \brief this function is used to add the parsed "id" option into the current signature
+ *
+ * \param de_ctx    Pointer to the Detection Engine Context
+ * \param s         Pointer to the Current Signature
+ * \param str       Pointer to the user provided "id" option
+ *
+ * \retval 0 on Success or -1 on Failure
+ */
 static int DetectS7S7Setup(DetectEngineCtx *de_ctx, Signature *s, const char *str)
 {
     SCEnter();
-    DetectModbusRust *s7 = NULL;
+    S7CommSignature *s7 = NULL;
     SigMatch        *sm = NULL;
     s->init_data->list = g_s7_rust_id;
 
@@ -104,24 +94,57 @@ static int DetectS7S7Setup(DetectEngineCtx *de_ctx, Signature *s, const char *st
 
     SCReturnInt(0);
 error:
+    if (s7 != NULL)
+        DetectS7Free(de_ctx, s7);
+    if (sm != NULL)
+        SCFree(sm);
     SCReturnInt(-1);
 }
 
+/**
+ * \internal
+ * \brief Function to match a S7 transaction to a rule signature
+ *
+ * \param det_ctx Pointer to the pattern matcher thread.
+ * \param f       Pointer to the current flow.
+ * \param flags   Flags.
+ * \param state   App layer state.
+ * \param txv     Pointer to the transaction.
+ * \param s       Pointer to the Signature.
+ * \param ctx     Pointer to the sigmatch that we will cast into uint8_t.
+ *
+ * \retval 0 no match.
+ * \retval 1 match.
+ */
+static int DetectS7Match(DetectEngineThreadCtx *det_ctx, Flow *f, uint8_t flags, void *state,
+        void *txv, const Signature *s, const SigMatchCtx *ctx)
+{
+    return rs_s7_inspect(txv, (void *)ctx);
+}
+
+/**
+ * \brief Registration function for s7 keyword
+ */
+void DetectS7S7Register(void)
+{
+    sigmatch_table[DETECT_AL_S7_S7].name = "s7";
+    sigmatch_table[DETECT_AL_S7_S7].desc =
+            "S7 content modifier to match on the s7 buffers";
+    sigmatch_table[DETECT_AL_S7_S7].Setup = DetectS7S7Setup;
 #ifdef UNITTESTS
+    sigmatch_table[DETECT_AL_S7_S7].RegisterTests = DetectS7S7RegisterTests;
+#endif
+    sigmatch_table[DETECT_AL_S7_S7].Match = NULL;
+    sigmatch_table[DETECT_AL_S7_S7].AppLayerTxMatch = DetectS7Match;
+    sigmatch_table[DETECT_AL_S7_S7].Free = DetectS7Free;
 
-#include "util-unittest.h"
-#include "util-unittest-helper.h"
-#include "flow-util.h"
-#include "stream-tcp.h"
-#include "detect-engine-alert.h"
+    /* register inspect engines */
+    DetectAppLayerInspectEngineRegister2("s7_buffer", ALPROTO_S7, SIG_FLAG_TOCLIENT, 0,
+            DetectEngineInspectGenericList, NULL);
 
-static int DetectS7S7Test(void)
-{
-    PASS;
+    g_s7_rust_id = DetectBufferTypeGetByName("s7_buffer");
+
+    SCLogNotice("S7 application layer detect registered.");
 }
 
-static void DetectS7S7RegisterTests(void)
-{
-    UtRegisterTest("DetectS7S7Test", DetectS7S7Test);
-}
-#endif /* UNITTESTS */
+//TODO Unit tests

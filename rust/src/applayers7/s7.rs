@@ -15,24 +15,38 @@
  * 02110-1301, USA.
  */
 
-use super::parser;
 use crate::applayer::{self, *};
 use crate::core::{AppProto, Flow, ALPROTO_UNKNOWN, IPPROTO_TCP};
-use nom7 as nom;
+use nom7::{
+    error::make_error, error::ErrorKind,
+    IResult,
+};
 use std;
-use std::collections::VecDeque;
-use std::ffi::CString;
-use std::os::raw::{c_char, c_int, c_void};
+use std::{
+    collections::VecDeque,
+    os::raw::{c_char, c_int, c_void},
+    ffi::CString
+};
+
+use super::parser;
+use super::s7_constant::{S7Comm};
+use super::s7_constant::{
+    INIT_FRAME_LENGTH, INIT_TPKT_VERSION, INIT_TPKT_RESERVED,
+    INIT_TPKT_INIT_LENGTH_1, INIT_TPKT_INIT_LENGTH_2,
+    COTP_CONNECT_REQUEST, COTP_CONNECT_CONFIRM, S7_PROTOCOLE_ID,
+    COTP_HEADER_LENGTH,TPKT_HEADER_LENGTH
+};
 
 static mut ALPROTO_S7: AppProto = ALPROTO_UNKNOWN;
 
 #[derive(AppLayerEvent)]
 enum S7Event {}
 
+#[derive(Debug)]
 pub struct S7Transaction {
-    tx_id: u64,
-    pub request: Option<String>,
-    pub response: Option<String>,
+    pub tx_id: u64,
+    pub request: Option<S7Comm>,
+    pub response: Option<S7Comm>,
 
     tx_data: AppLayerTxData,
 }
@@ -74,7 +88,8 @@ impl State<S7Transaction> for S7State {
         self.transactions.len()
     }
 
-    fn get_transaction_by_index(&self, index: usize) -> Option<&S7Transaction> {
+    fn get_transaction_by_index(&self, index: usize)
+            -> Option<&S7Transaction> {
         self.transactions.get(index)
     }
 }
@@ -84,7 +99,7 @@ impl S7State {
         Default::default()
     }
 
-    // Free a transaction by ID.
+    /* Free a transaction by ID. */
     fn free_tx(&mut self, tx_id: u64) {
         let len = self.transactions.len();
         let mut found = false;
@@ -120,95 +135,92 @@ impl S7State {
     }
 
     fn parse_request(&mut self, input: &[u8]) -> AppLayerResult {
-        // We're not interested in empty requests.
-        if input.is_empty() {
-            return AppLayerResult::ok();
+        /* handle non s7 parasite frames such as cotp handshakes*/
+        if is_malformed_s7(input) {
+            return AppLayerResult::ok()
         }
 
         // If there was gap, check we can sync up again.
+        //TODO how do we deal with gaps ?
         if self.request_gap {
             if probe(input).is_err() {
-                // The parser now needs to decide what to do as we are not in sync.
-                // For this s7, we'll just try again next time.
+                SCLogDebug!("req_parsing DONE, gap is true");
+                /* The parser now needs to decide what to do as we are not in 
+                 * sync. Here, we'll just try again next time. */
                 return AppLayerResult::ok();
             }
 
-            // It looks like we're in sync with a message header, clear gap
-            // state and keep parsing.
+            /* It looks like we're in sync with a message header, clear gap
+             * state and keep parsing */
             self.request_gap = false;
         }
 
-        let mut start = input;
-        while !start.is_empty() {
-            match parser::parse_message(start) {
-                Ok((rem, request)) => {
-                    start = rem;
-
-                    SCLogNotice!("Request: {}", request);
-                    let mut tx = self.new_tx();
-                    tx.request = Some(request);
-                    self.transactions.push_back(tx);
-                }
-                Err(nom::Err::Incomplete(_)) => {
-                    // Not enough data. This parser doesn't give us a good indication
-                    // of how much data is missing so just ask for one more byte so the
-                    // parse is called as soon as more data is received.
-                    let consumed = input.len() - start.len();
-                    let needed = start.len() + 1;
-                    return AppLayerResult::incomplete(consumed as u32, needed as u32);
-                }
-                Err(_) => {
-                    return AppLayerResult::err();
-                }
+        match parser::s7_parse_message(input) {
+            Ok((_rem, request)) => {
+                SCLogDebug!("Parsing request ok: {:?}", request);
+                let mut tx = self.new_tx();
+                tx.request = Some(request);
+                self.transactions.push_back(tx);
+            }
+            Err(nom7::Err::Incomplete(_)) => {
+                SCLogDebug!("Parsing request failed: ERR Incomplete");
+                /* Not enough data. This parser doesn't give us a good 
+                 * indication of how much data is missing so just ask for one 
+                 * more byte so the parse is called as soon as more data is 
+                 * received. */
+                let needed = input.len() + 1;
+                return AppLayerResult::incomplete(0_u32, needed as u32);
+            }
+            Err(_err) => {
+                SCLogDebug!("Parsing request failed: {}", _err);
+                return AppLayerResult::err();
             }
         }
 
-        // Input was fully consumed.
+        /* Input was fully consumed. */
         return AppLayerResult::ok();
     }
 
     fn parse_response(&mut self, input: &[u8]) -> AppLayerResult {
-        // We're not interested in empty responses.
-        if input.is_empty() {
-            return AppLayerResult::ok();
+        /* handle non s7 parasite frames such as cotp handshakes*/
+        if is_malformed_s7(input) {
+            return AppLayerResult::ok()
         }
 
+        //TODO how do we deal with gaps ?
         if self.response_gap {
             if probe(input).is_err() {
-                // The parser now needs to decide what to do as we are not in sync.
-                // For this s7, we'll just try again next time.
+                SCLogDebug!("resp_parsing DONE, gap is true");
+                /* The parser now needs to decide what to do as we are not in
+                 * sync. Here, we'll just try again next time. */
                 return AppLayerResult::ok();
             }
 
-            // It looks like we're in sync with a message header, clear gap
-            // state and keep parsing.
+            /* It looks like we're in sync with a message header, clear gap
+             * state and keep parsing */
             self.response_gap = false;
         }
-        let mut start = input;
-        while !start.is_empty() {
-            match parser::parse_message(start) {
-                Ok((rem, response)) => {
-                    start = rem;
 
-                    if let Some(tx) = self.find_request() {
-                        tx.response = Some(response);
-                        SCLogNotice!("Found response for request:");
-                        SCLogNotice!("- Request: {:?}", tx.request);
-                        SCLogNotice!("- Response: {:?}", tx.response);
-                    }
+        match parser::s7_parse_message(input) {
+            Ok((_rem, response)) => {
+                SCLogDebug!("Parsing response ok: {:?}", response);
+                if let Some(tx) = self.find_request() {
+                    tx.response = Some(response);
+                    SCLogDebug!("Found response for request");
                 }
-                Err(nom::Err::Incomplete(_)) => {
-                    let consumed = input.len() - start.len();
-                    let needed = start.len() + 1;
-                    return AppLayerResult::incomplete(consumed as u32, needed as u32);
-                }
-                Err(_) => {
-                    return AppLayerResult::err();
-                }
+            }
+            Err(nom7::Err::Incomplete(_)) => {
+                SCLogDebug!("Parsing response failed: ERR Incomplete");
+                let needed = input.len() + 1;
+                return AppLayerResult::incomplete(0_u32, needed as u32);
+            }
+            Err(_err) => {
+                SCLogDebug!("Parsing response failed: {}", _err);
+                return AppLayerResult::err();
             }
         }
 
-        // All input was fully consumed.
+        /* All input was fully consumed. */
         return AppLayerResult::ok();
     }
 
@@ -221,23 +233,51 @@ impl S7State {
     }
 }
 
-/// Probe for a valid header.
-///
-/// As this s7 protocol uses messages prefixed with the size
-/// as a string followed by a ':', we look at up to the first 10
-/// characters for that pattern.
-fn probe(input: &[u8]) -> nom::IResult<&[u8], ()> {
-    let size = std::cmp::min(10, input.len());
-    let (rem, prefix) = nom::bytes::complete::take(size)(input)?;
-    nom::sequence::terminated(
-        nom::bytes::complete::take_while1(nom::character::is_digit),
-        nom::bytes::complete::tag(":"),
-    )(prefix)?;
-    Ok((rem, ()))
+/* Probe for a s7 protocol. Since S7 is built on top of COTP,
+*  tcp connection is considered using s7 protocol if :
+*   - on port 102
+*   - valid COTP connection on top of TCP 
+* Not perfect but sufficient */
+fn probe(input: &[u8]) -> IResult<&[u8], ()> {
+    /* fail probe if PDU not the right size for comm setup */
+    if ! input.len() == INIT_FRAME_LENGTH { 
+        return Err(nom7::Err::Error(make_error(input, ErrorKind::Verify)))
+    }
+
+    let (cotp_payload, tpkt_payload) = 
+            nom7::bytes::complete::take(4_usize)(input)?;
+
+    /* fail probe if not the proper COTP initialisation */
+    if tpkt_payload != [INIT_TPKT_VERSION, 
+                        INIT_TPKT_RESERVED, 
+                        INIT_TPKT_INIT_LENGTH_1, 
+                        INIT_TPKT_INIT_LENGTH_2] || 
+       (cotp_payload[1] != COTP_CONNECT_REQUEST && 
+        cotp_payload[1] != COTP_CONNECT_CONFIRM)
+    {
+        return Err(nom7::Err::Error(make_error(input, ErrorKind::Verify)))
+    }
+    SCLogDebug!("s7 prober SUCCESS");
+    return Ok((&[], ()))
 }
 
-// C exports.
+fn is_malformed_s7(input: &[u8]) -> bool{
+    /* Not interested in frames that contain only TPKT and COTP headers
+    *  but no S7 PDU */
+    if input.len() <= COTP_HEADER_LENGTH + TPKT_HEADER_LENGTH {
+        SCLogDebug!("req_parsing DONE, too short, length: {}", input.len());
+        return true;
+    }
+    /* Final check to verify that this is a s7 frame */
+    if input[COTP_HEADER_LENGTH + TPKT_HEADER_LENGTH] != S7_PROTOCOLE_ID {
+        SCLogDebug!("req_parsing DONE, wrong protocol, id: {:x?}", 
+            input[COTP_HEADER_LENGTH + TPKT_HEADER_LENGTH]);
+        return true;
+    }
+    return false;
+}
 
+/* C code dependencies */
 /// C entry point for a probing parser.
 unsafe extern "C" fn rs_s7_probing_parser(
     _flow: *const Flow, _direction: u8, input: *const u8, input_len: u32, _rdir: *mut u8,
@@ -336,41 +376,6 @@ unsafe extern "C" fn rs_s7_tx_get_alstate_progress(tx: *mut c_void, _direction: 
     return 0;
 }
 
-/// Get the request buffer for a transaction from C.
-///
-/// No required for parsing, but an example function for retrieving a
-/// pointer to the request buffer from C for detection.
-#[no_mangle]
-pub unsafe extern "C" fn rs_s7_get_request_buffer(
-    tx: *mut c_void, buf: *mut *const u8, len: *mut u32,
-) -> u8 {
-    let tx = cast_pointer!(tx, S7Transaction);
-    if let Some(ref request) = tx.request {
-        if !request.is_empty() {
-            *len = request.len() as u32;
-            *buf = request.as_ptr();
-            return 1;
-        }
-    }
-    return 0;
-}
-
-/// Get the response buffer for a transaction from C.
-#[no_mangle]
-pub unsafe extern "C" fn rs_s7_get_response_buffer(
-    tx: *mut c_void, buf: *mut *const u8, len: *mut u32,
-) -> u8 {
-    let tx = cast_pointer!(tx, S7Transaction);
-    if let Some(ref response) = tx.response {
-        if !response.is_empty() {
-            *len = response.len() as u32;
-            *buf = response.as_ptr();
-            return 1;
-        }
-    }
-    return 0;
-}
-
 export_tx_data_get!(rs_s7_get_tx_data, S7Transaction);
 export_state_data_get!(rs_s7_get_state_data, S7State);
 
@@ -379,7 +384,7 @@ const PARSER_NAME: &[u8] = b"s7\0";
 
 #[no_mangle]
 pub unsafe extern "C" fn rs_s7_register_parser() {
-    let default_port = CString::new("[7000]").unwrap();
+    let default_port = CString::new("[102]").unwrap();
     let parser = RustParser {
         name: PARSER_NAME.as_ptr() as *const c_char,
         default_port: default_port.as_ptr(),
@@ -421,79 +426,8 @@ pub unsafe extern "C" fn rs_s7_register_parser() {
         if AppLayerParserConfParserEnabled(ip_proto_str.as_ptr(), parser.name) != 0 {
             let _ = AppLayerRegisterParser(&parser, alproto);
         }
-        SCLogNotice!("Rust s7 parser registered.");
+        SCLogDebug!("Rust s7 parser registered.");
     } else {
-        SCLogNotice!("Protocol detector and parser disabled for S7.");
-    }
-}
-
-#[cfg(test)]
-mod test {
-    use super::*;
-
-    #[test]
-    fn test_probe() {
-        assert!(probe(b"1").is_err());
-        assert!(probe(b"1:").is_ok());
-        assert!(probe(b"123456789:").is_ok());
-        assert!(probe(b"0123456789:").is_err());
-    }
-
-    #[test]
-    fn test_incomplete() {
-        let mut state = S7State::new();
-        let buf = b"5:Hello3:bye";
-
-        let r = state.parse_request(&buf[0..0]);
-        assert_eq!(
-            r,
-            AppLayerResult {
-                status: 0,
-                consumed: 0,
-                needed: 0
-            }
-        );
-
-        let r = state.parse_request(&buf[0..1]);
-        assert_eq!(
-            r,
-            AppLayerResult {
-                status: 1,
-                consumed: 0,
-                needed: 2
-            }
-        );
-
-        let r = state.parse_request(&buf[0..2]);
-        assert_eq!(
-            r,
-            AppLayerResult {
-                status: 1,
-                consumed: 0,
-                needed: 3
-            }
-        );
-
-        // This is the first message and only the first message.
-        let r = state.parse_request(&buf[0..7]);
-        assert_eq!(
-            r,
-            AppLayerResult {
-                status: 0,
-                consumed: 0,
-                needed: 0
-            }
-        );
-
-        // The first message and a portion of the second.
-        let r = state.parse_request(&buf[0..9]);
-        assert_eq!(
-            r,
-            AppLayerResult {
-                status: 1,
-                consumed: 7,
-                needed: 3
-            }
-        );
+        SCLogDebug!("Protocol detector and parser disabled for S7.");
     }
 }
