@@ -82,8 +82,8 @@ void DetectS8protocontentRegister(void)
     /* register inspect engines */
     DetectAppLayerInspectEngineRegister2("s8_buffer", ALPROTO_S8, SIG_FLAG_TOSERVER, 0,
             DetectEngineInspectGenericList, NULL);
-    DetectAppLayerInspectEngineRegister2("s8_buffer", ALPROTO_S8, SIG_FLAG_TOCLIENT, 0,
-            DetectEngineInspectGenericList, NULL);
+    //DetectAppLayerInspectEngineRegister2("s8_buffer", ALPROTO_S8, SIG_FLAG_TOCLIENT, 0,
+    //        DetectEngineInspectGenericList, NULL);
 
     g_s8_rust_id = DetectBufferTypeGetByName("s8_buffer");
 
@@ -141,7 +141,7 @@ static uint8_t DetectEngineInspectS8protocontent(DetectEngineCtx *de_ctx,
                 DETECT_ENGINE_CONTENT_INSPECTION_MODE_STATE);
     }
 
-    SCLogNotice("Returning %d.", ret);
+    SCLogNotice("INSPECTING, Returning %d.", ret);
     return ret;
 }
 
