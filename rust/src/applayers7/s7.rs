@@ -30,7 +30,8 @@ use super::s7_constant::{S7Comm};
 use super::s7_constant::{
     INIT_FRAME_LENGTH, INIT_TPKT_VERSION, INIT_TPKT_RESERVED,
     INIT_TPKT_INIT_LENGTH_1, INIT_TPKT_INIT_LENGTH_2,
-    COTP_CONNECT_REQUEST, COTP_CONNECT_CONFIRM, S7_PROTOCOLE_ID
+    COTP_CONNECT_REQUEST, COTP_CONNECT_CONFIRM, S7_PROTOCOLE_ID,
+    COTP_HEADER_LENGTH,TPKT_HEADER_LENGTH
 };
 
 static mut ALPROTO_S7: AppProto = ALPROTO_UNKNOWN;
@@ -131,14 +132,15 @@ impl S7State {
 
     fn parse_request(&mut self, input: &[u8]) -> AppLayerResult {
         SCLogNotice!("start parse_request, input: {:x?}", input);
-        /* We're not interested in empty s7 requests */
-        if input.len() < 8 {
+        /* Not interested in frames that contain only TPKT and COTP headers
+        *  but no S7 PDU */
+        if input.len() <= COTP_HEADER_LENGTH + TPKT_HEADER_LENGTH {
             SCLogNotice!("req_parsing DONE, too short, length: {}", input.len());
             return AppLayerResult::ok();
         }
 
         /* Final check to verify that this is a s7 frame*/
-        if input[7] != S7_PROTOCOLE_ID {
+        if input[COTP_HEADER_LENGTH + TPKT_HEADER_LENGTH] != S7_PROTOCOLE_ID {
             SCLogNotice!("req_parsing DONE, wrong protocol, id: {:x?}", input[7]);
             return AppLayerResult::ok();
         }
@@ -431,3 +433,4 @@ pub unsafe extern "C" fn rs_s7_register_parser() {
 }
 
 //TODO unit tests
+//verify line length 

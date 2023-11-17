@@ -15,14 +15,27 @@
  * 02110-1301, USA.
  */
 
+/* Frame length during the connection step */
 pub const INIT_FRAME_LENGTH: usize = 22;
-pub const INIT_TPKT_VERSION: u8 = 0x03; /* TPKT version used  in S7 protocol */
-pub const INIT_TPKT_RESERVED: u8 = 0x00; /* TPKT reserved byte used  in S7 protocol */
-pub const INIT_TPKT_INIT_LENGTH_1: u8 = 0x00; /* frame length in connect steps */
-pub const INIT_TPKT_INIT_LENGTH_2: u8 = 0x16; /* frame length in connect steps */
-pub const COTP_CONNECT_REQUEST: u8 = 0xE0; /* COTP initialisation codes */
-pub const COTP_CONNECT_CONFIRM: u8 = 0xD0; /* COTP initialisation codes */
-pub const S7_PROTOCOLE_ID: u8 = 0x32; /* S7 protocol id code */
+
+pub const TPKT_HEADER_LENGTH: usize = 4;
+/* TPKT version used  in S7 protocol */
+pub const INIT_TPKT_VERSION: u8 = 0x03; 
+/* TPKT reserved byte used  in S7 protocol */
+pub const INIT_TPKT_RESERVED: u8 = 0x00; 
+/* frame length in connect steps */
+pub const INIT_TPKT_INIT_LENGTH_1: u8 = 0x00; 
+/* frame length in connect steps */
+pub const INIT_TPKT_INIT_LENGTH_2: u8 = 0x16;
+
+
+pub const COTP_HEADER_LENGTH: usize = 3;
+/* COTP initialisation bytes (client and server) */
+pub const COTP_CONNECT_REQUEST: u8 = 0xE0; 
+pub const COTP_CONNECT_CONFIRM: u8 = 0xD0;
+
+pub const S7_HEADER_LENGTH: usize = 10;
+pub const S7_PROTOCOLE_ID: u8 = 0x32;
 
 #[derive(Debug)]
 pub struct S7Comm {
@@ -32,8 +45,8 @@ pub struct S7Comm {
 #[repr(u8)]
 #[derive(Debug, PartialEq)]
 pub enum S7Function {
-    ReadVariable = 0x04,
-    WriteVariable = 0x05,
+    ReadVariable,
+    WriteVariable,
 }
 
 impl std::str::FromStr for S7Function {
@@ -42,9 +55,20 @@ impl std::str::FromStr for S7Function {
         match input_string {
             "read" => Ok(S7Function::ReadVariable),
             "write" => Ok(S7Function::WriteVariable),
-            _ => Err(format!("'{}' is not a valid value for S7Function", input_string)),
+            _ => Err(format!("'{}' cannot be converted with S7Function::from_str", input_string)),
+        }
+    }
+}
+
+impl S7Function {
+    pub fn from_u8(input_u8: u8) -> Result<Self, String> {
+        match input_u8 {
+            0x04u8 => Ok(S7Function::ReadVariable),
+            0x05u8 => Ok(S7Function::WriteVariable),
+            _ => Err(format!("'{}' cannot be converted with S7Function::from_u8", input_u8)),
         }
     }
 }
 
 //TODO unit tests
+//verify line length 

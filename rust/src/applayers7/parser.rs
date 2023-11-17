@@ -22,17 +22,21 @@ use nom7::{
 use std;
 
 use super::s7_constant::{S7Function, S7Comm};
+use super::s7_constant::{
+    COTP_HEADER_LENGTH, TPKT_HEADER_LENGTH, S7_HEADER_LENGTH
+};
 
-pub fn s7_parse_request(i: &[u8]) -> IResult<&[u8], S7Comm> {
-    SCLogNotice!("in request parser, input: {:x?}", i);
-    let (i, _headers) = take(17_usize)(i)?;
-    let (_i, function) = take(1_usize)(i)?;
-    SCLogNotice!("function: {:x?}", function);
-    return match function {
-        [0x04u8] => Ok((&[], S7Comm {function: Some(S7Function::ReadVariable)})),
-        [0x05u8] => Ok((&[], S7Comm {function: Some(S7Function::WriteVariable)})),
-        _ => Ok((&[], S7Comm {function: None})),
-    };
+pub fn s7_parse_request(input: &[u8]) -> IResult<&[u8], S7Comm> {
+    SCLogNotice!("in request parser, input: {:x?}", input);
+    
+    let (input, _headers_bytes) = take(TPKT_HEADER_LENGTH
+        + COTP_HEADER_LENGTH + S7_HEADER_LENGTH)(input)?;
+    let (_input, function_byte) = take(1_usize)(input)?;
+    SCLogNotice!("function: {:x?}", function_byte);
+    return match S7Function::from_u8(function_byte[0]) {
+        Ok(s7_function) => Ok((&[], S7Comm {function: Some(s7_function)})),
+        _ => Ok((&[], S7Comm {function: None}))
+    }
 }
 
 pub fn s7_parse_response(i: &[u8]) -> IResult<&[u8], S7Comm> {
@@ -41,3 +45,4 @@ pub fn s7_parse_response(i: &[u8]) -> IResult<&[u8], S7Comm> {
 }
 
 //TODO Unit tests
+//verify line length 

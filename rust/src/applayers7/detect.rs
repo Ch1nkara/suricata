@@ -90,3 +90,4 @@ pub unsafe extern "C" fn rs_s7_free(ptr: *mut c_void) {
 }
 
 //TODO unit tests
+//verify line length 

@@ -33,3 +33,4 @@ pub unsafe extern "C" fn rs_s7_logger_log(
 }
 
 //TODO unit tests
+//verify line length 
