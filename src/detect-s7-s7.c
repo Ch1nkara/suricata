@@ -42,6 +42,10 @@
 #include "rust.h"
 
 static int DetectS7S7Setup(DetectEngineCtx *, Signature *, const char *);
+static uint8_t DetectEngineInspectS7S7Buffer(DetectEngineCtx *de_ctx,
+        DetectEngineThreadCtx *det_ctx, const struct DetectEngineAppInspectionEngine_ *engine,
+        const Signature *s, Flow *f, uint8_t flags, void *alstate, void *txv, uint64_t tx_id);
+
 #ifdef UNITTESTS
 static void DetectS7S7RegisterTests(void);
 #endif
@@ -79,7 +83,7 @@ void DetectS7S7Register(void)
     //sigmatch_table[DETECT_AL_S7_S7].flags |= SIGMATCH_NOOPT;
     sigmatch_table[DETECT_AL_S7_S7].Match = NULL;
     sigmatch_table[DETECT_AL_S7_S7].AppLayerTxMatch = DetectS7Match;
-    sigmatch_table[DETECT_AL_S7_S7].Free = DetectS7Free;
+    sigmatch_table[DETECT_AL_S7_S7].Free = DetectS7Free; //NECESSARY ?
 
 
     /* register inspect engines */
@@ -120,6 +124,16 @@ static int DetectS7S7Setup(DetectEngineCtx *de_ctx, Signature *s, const char *st
     SCReturnInt(0);
 error:
     SCReturnInt(-1);
+}
+
+static uint8_t DetectEngineInspectS7S7Buffer(DetectEngineCtx *de_ctx,
+        DetectEngineThreadCtx *det_ctx, const struct DetectEngineAppInspectionEngine_ *engine,
+        const Signature *s, Flow *f, uint8_t flags, void *alstate, void *txv, uint64_t tx_id)
+{
+    uint8_t ret = -1;
+
+    SCLogNotice("Returning %d.", ret);
+    return ret;
 }
 
 #ifdef UNITTESTS
