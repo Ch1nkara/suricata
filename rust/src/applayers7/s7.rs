@@ -40,7 +40,7 @@ enum S7Event {}
 pub struct S7Transaction {
     tx_id: u64,
     pub request: Option<Request>,
-    pub response: Option<String>,
+    pub response: Option<Request>,
 
     tx_data: AppLayerTxData,
 }
@@ -188,6 +188,58 @@ impl S7State {
     }
 
     fn parse_response(&mut self, input: &[u8]) -> AppLayerResult {
+        SCLogNotice!("start parse_response, input: {:x?}", input);
+        /* We're not interested in empty s7 requests */
+        if input.len() < 8 {
+            SCLogNotice!("resp_parsing DONE, too short, length: {}", input.len());
+            return AppLayerResult::ok();
+        }
+
+        /* Final check to verify that this is a s7 frame*/
+        if input[7] != S7_PROTOCOLE_ID {
+            SCLogNotice!("resp_parsing DONE, wrong protocol, id: {:x?}", input[7]);
+            return AppLayerResult::ok();
+        }
+
+        //TODO how do we deal with gaps ?
+        if self.response_gap {
+            if probe(input).is_err() {
+                SCLogNotice!("resp_parsing DONE, gap is true");
+                // The parser now needs to decide what to do as we are not in sync.
+                // For this s8, we'll just try again next time.
+                return AppLayerResult::ok();
+            }
+
+            // It looks like we're in sync with a message header, clear gap
+            // state and keep parsing.
+            self.response_gap = false;
+        }
+
+
+        let mut start = input;
+        while !start.is_empty() {
+            match parser::s7_parse_response(start) {
+                Ok((rem, response)) => {
+                    SCLogNotice!("parser::s7_parse_response returned OK");
+                    start = rem;
+                    if let Some(tx) = self.find_request() {
+                        tx.response = Some(response);
+                        SCLogNotice!("Found response for request:");
+                    }
+                }
+                Err(nom::Err::Incomplete(_)) => {
+                    SCLogNotice!("resp_parser returned ERR Incomplete");
+                    let consumed = input.len() - start.len();
+                    let needed = start.len() + 1;
+                    return AppLayerResult::incomplete(consumed as u32, needed as u32);
+                }
+                Err(_) => {
+                    SCLogNotice!("resp_parser returned ERR2, else");
+                    return AppLayerResult::err();
+                }
+            }
+        }
+
         // All input was fully consumed.
         return AppLayerResult::ok();
     }

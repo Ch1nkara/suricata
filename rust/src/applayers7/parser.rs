@@ -39,6 +39,11 @@ pub fn s7_parse_request(i: &[u8]) -> IResult<&[u8], Request> {
     };
 }
 
+pub fn s7_parse_response(i: &[u8]) -> IResult<&[u8], Request> {
+    SCLogNotice!("in response parser, input: {:x?}", i);
+    Ok((&[], Request {function: None}))
+}
+
 pub fn parse_message(i: &[u8]) -> IResult<&[u8], String> {
     let (i, len) = map_res(map_res(take_until(":"), std::str::from_utf8), parse_len)(i)?;
     let (i, _sep) = take(1_usize)(i)?;
