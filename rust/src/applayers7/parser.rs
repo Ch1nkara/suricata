@@ -16,67 +16,28 @@
  */
 
 use nom7::{
-    bytes::streaming::{take, take_until},
-    combinator::map_res,
+    bytes::streaming::take,
     IResult,
 };
 use std;
-use super::s7_constant::{S7Function, Request};
 
-fn parse_len(input: &str) -> Result<u32, std::num::ParseIntError> {
-    input.parse::<u32>()
-}
+use super::s7_constant::{S7Function, S7Comm};
 
-pub fn s7_parse_request(i: &[u8]) -> IResult<&[u8], Request> {
+pub fn s7_parse_request(i: &[u8]) -> IResult<&[u8], S7Comm> {
     SCLogNotice!("in request parser, input: {:x?}", i);
     let (i, _headers) = take(17_usize)(i)?;
-    let (i, function) = take(1_usize)(i)?;
+    let (_i, function) = take(1_usize)(i)?;
     SCLogNotice!("function: {:x?}", function);
     return match function {
-        [0x04u8] => Ok((&[], Request {function: Some(S7Function::ReadVariable)})),
-        [0x05u8] => Ok((&[], Request {function: Some(S7Function::WriteVariable)})),
-        _ => Ok((&[], Request {function: None})),
+        [0x04u8] => Ok((&[], S7Comm {function: Some(S7Function::ReadVariable)})),
+        [0x05u8] => Ok((&[], S7Comm {function: Some(S7Function::WriteVariable)})),
+        _ => Ok((&[], S7Comm {function: None})),
     };
 }
 
-pub fn s7_parse_response(i: &[u8]) -> IResult<&[u8], Request> {
+pub fn s7_parse_response(i: &[u8]) -> IResult<&[u8], S7Comm> {
     SCLogNotice!("in response parser, input: {:x?}", i);
-    Ok((&[], Request {function: None}))
+    Ok((&[], S7Comm {function: None}))
 }
 
-pub fn parse_message(i: &[u8]) -> IResult<&[u8], String> {
-    let (i, len) = map_res(map_res(take_until(":"), std::str::from_utf8), parse_len)(i)?;
-    let (i, _sep) = take(1_usize)(i)?;
-    let (i, msg) = map_res(take(len as usize), std::str::from_utf8)(i)?;
-    let result = msg.to_string();
-    Ok((i, result))
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use nom7::Err;
-
-    /// Simple test of some valid data.
-    #[test]
-    fn test_parse_valid() {
-        let buf = b"12:Hello World!4:Bye.";
-
-        let result = parse_message(buf);
-        match result {
-            Ok((remainder, message)) => {
-                // Check the first message.
-                assert_eq!(message, "Hello World!");
-
-                // And we should have 6 bytes left.
-                assert_eq!(remainder.len(), 6);
-            }
-            Err(Err::Incomplete(_)) => {
-                panic!("Result should not have been incomplete.");
-            }
-            Err(Err::Error(err)) | Err(Err::Failure(err)) => {
-                panic!("Result should not be an error: {:?}.", err);
-            }
-        }
-    }
-}
+//TODO Unit tests

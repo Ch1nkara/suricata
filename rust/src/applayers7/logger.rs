@@ -19,7 +19,7 @@ use super::s7::S7Transaction;
 use crate::jsonbuilder::{JsonBuilder, JsonError};
 use std;
 
-fn log_s7(tx: &S7Transaction, js: &mut JsonBuilder) -> Result<(), JsonError> {
+fn log_s7(_tx: &S7Transaction, _js: &mut JsonBuilder) -> Result<(), JsonError> {
 
     Ok(())
 }
@@ -31,3 +31,5 @@ pub unsafe extern "C" fn rs_s7_logger_log(
     let tx = cast_pointer!(tx, S7Transaction);
     log_s7(tx, js).is_ok()
 }
+
+//TODO unit tests

@@ -1,8 +1,27 @@
+/* Copyright (C) 2023 Open Information Security Foundation
+ *
+ * You can copy, redistribute or modify this Program under the terms of
+ * the GNU General Public License version 2 as published by the Free
+ * Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * version 2 along with this program; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
+ * 02110-1301, USA.
+ */
+
 use super::s7::S7Transaction;
-use super::s7_constant::Request;
-use super::s7_constant::S7Function;
-use std::ffi::CStr;
-use std::os::raw::{c_char, c_void};
+use super::s7_constant::{S7Comm, S7Function};
+use std::{
+    ffi::CStr,
+    os::raw::{c_char, c_void},
+    str::FromStr
+};
 
 #[derive(Debug, Default)]
 pub struct DetectS7Signature {
@@ -14,7 +33,7 @@ pub struct DetectS7Signature {
 #[no_mangle]
 pub extern "C" fn rs_s7_inspect(tx: &S7Transaction, s7: &DetectS7Signature) -> u8 {
     SCLogNotice!("inspecting, transaction: {:?}", tx);
-    let mut tx_request: &Request;
+    let tx_request: &S7Comm;
     match &tx.request {
         Some(tx_r) => tx_request = tx_r,
         _ => {SCLogNotice!("tx.request is NONE"); return 0}
@@ -32,10 +51,12 @@ fn parse_function(rule_str: &str) -> Result<DetectS7Signature, ()> {
     let mut s7: DetectS7Signature = Default::default();
     SCLogNotice!("rule_str: {}", rule_str);
     let mut words = rule_str.split_whitespace();
-    match words.next() {
-        Some("read") => s7.function = Some(S7Function::ReadVariable),
-        Some("write") => s7.function = Some(S7Function::WriteVariable),
-        _ => {SCLogNotice!("couldn't parse first word: {:?}", words.next()); return Err(())}
+    match S7Function::from_str(words.next().unwrap_or("")) {
+        Ok(s7_function) => s7.function = Some(s7_function),
+        _ => {
+            SCLogNotice!("word not a function: {:?}", words.next()); 
+            return Err(())
+        }
     }
     SCLogNotice!("signature: {:?}", s7);
     Ok(s7)
@@ -67,3 +88,5 @@ pub unsafe extern "C" fn rs_s7_free(ptr: *mut c_void) {
         let _ = Box::from_raw(ptr as *mut DetectS7Signature);
     }
 }
+
+//TODO unit tests

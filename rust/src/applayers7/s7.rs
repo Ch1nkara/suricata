@@ -15,21 +15,23 @@
  * 02110-1301, USA.
  */
 
+use crate::applayer::{self, *};
+use crate::core::{AppProto, Flow, ALPROTO_UNKNOWN, IPPROTO_TCP};
+use nom7 as nom;
+use std;
+use std::{
+    collections::VecDeque,
+    os::raw::{c_char, c_int, c_void},
+    ffi::CString
+};
+
 use super::parser;
-use super::s7_constant::{Request};
+use super::s7_constant::{S7Comm};
 use super::s7_constant::{
     INIT_FRAME_LENGTH, INIT_TPKT_VERSION, INIT_TPKT_RESERVED,
     INIT_TPKT_INIT_LENGTH_1, INIT_TPKT_INIT_LENGTH_2,
     COTP_CONNECT_REQUEST, COTP_CONNECT_CONFIRM, S7_PROTOCOLE_ID
 };
-
-use crate::applayer::{self, *};
-use crate::core::{AppProto, Flow, ALPROTO_UNKNOWN, IPPROTO_TCP};
-use nom7 as nom;
-use std;
-use std::collections::VecDeque;
-use std::ffi::CString;
-use std::os::raw::{c_char, c_int, c_void};
 
 static mut ALPROTO_S7: AppProto = ALPROTO_UNKNOWN;
 
@@ -39,8 +41,8 @@ enum S7Event {}
 #[derive(Debug)]
 pub struct S7Transaction {
     tx_id: u64,
-    pub request: Option<Request>,
-    pub response: Option<Request>,
+    pub request: Option<S7Comm>,
+    pub response: Option<S7Comm>,
 
     tx_data: AppLayerTxData,
 }
@@ -156,32 +158,28 @@ impl S7State {
             self.request_gap = false;
         }
 
-        let mut start = input;
-        while !start.is_empty() {
-            match parser::s7_parse_request(start) {
-                Ok((rem, request)) => {
-                    /* DEBUG */
-                    SCLogNotice!("parser::s7_parse_request returned OK");
-                    start = rem;
-                    let mut tx = self.new_tx();
-                    tx.request = Some(request);
-                    self.transactions.push_back(tx);
-                }
-                Err(nom::Err::Incomplete(_)) => {
-                    SCLogNotice!("req_parser returned ERR Incomplete");
-                    // Not enough data. This parser doesn't give us a good indication
-                    // of how much data is missing so just ask for one more byte so the
-                    // parse is called as soon as more data is received.
-                    let consumed = input.len() - start.len();
-                    let needed = start.len() + 1;
-                    return AppLayerResult::incomplete(consumed as u32, needed as u32);
-                }
-                Err(_) => {
-                    SCLogNotice!("req_parser returned ERR2, else");
-                    return AppLayerResult::err();
-                }
+        match parser::s7_parse_request(input) {
+            Ok((_rem, request)) => {
+                /* DEBUG */
+                SCLogNotice!("parser::s7_parse_request returned OK");
+                let mut tx = self.new_tx();
+                tx.request = Some(request);
+                self.transactions.push_back(tx);
+            }
+            Err(nom::Err::Incomplete(_)) => {
+                SCLogNotice!("req_parser returned ERR Incomplete");
+                // Not enough data. This parser doesn't give us a good indication
+                // of how much data is missing so just ask for one more byte so the
+                // parse is called as soon as more data is received.
+                let needed = input.len() + 1;
+                return AppLayerResult::incomplete(0_u32, needed as u32);
+            }
+            Err(_) => {
+                SCLogNotice!("req_parser returned ERR2, else");
+                return AppLayerResult::err();
             }
         }
+
         SCLogNotice!("req_parsing DONE, everything seems fine, input: {:x?}", input);
         // Input was fully consumed.
         return AppLayerResult::ok();
@@ -215,28 +213,22 @@ impl S7State {
             self.response_gap = false;
         }
 
-
-        let mut start = input;
-        while !start.is_empty() {
-            match parser::s7_parse_response(start) {
-                Ok((rem, response)) => {
-                    SCLogNotice!("parser::s7_parse_response returned OK");
-                    start = rem;
-                    if let Some(tx) = self.find_request() {
-                        tx.response = Some(response);
-                        SCLogNotice!("Found response for request:");
-                    }
+        match parser::s7_parse_response(input) {
+            Ok((_rem, response)) => {
+                SCLogNotice!("parser::s7_parse_response returned OK");
+                if let Some(tx) = self.find_request() {
+                    tx.response = Some(response);
+                    SCLogNotice!("Found response for request:");
                 }
-                Err(nom::Err::Incomplete(_)) => {
-                    SCLogNotice!("resp_parser returned ERR Incomplete");
-                    let consumed = input.len() - start.len();
-                    let needed = start.len() + 1;
-                    return AppLayerResult::incomplete(consumed as u32, needed as u32);
-                }
-                Err(_) => {
-                    SCLogNotice!("resp_parser returned ERR2, else");
-                    return AppLayerResult::err();
-                }
+            }
+            Err(nom::Err::Incomplete(_)) => {
+                SCLogNotice!("resp_parser returned ERR Incomplete");
+                let needed = input.len() + 1;
+                return AppLayerResult::incomplete(0_u32, needed as u32);
+            }
+            Err(_) => {
+                SCLogNotice!("resp_parser returned ERR2, else");
+                return AppLayerResult::err();
             }
         }
 
@@ -260,9 +252,8 @@ impl S7State {
 * Not perfect but sufficient 
 */
 fn probe(input: &[u8]) -> nom::IResult<&[u8], ()> {
-    /*DEBUG*/
     SCLogNotice!("in prober function");
-    /* fail probe if pdu not the right size */
+    /* fail probe if PDU not the right size for comm setup */
     if ! input.len() == INIT_FRAME_LENGTH { 
         return Err(nom::Err::Error(nom::error::make_error(input, nom::error::ErrorKind::Verify)))
     }
@@ -276,17 +267,14 @@ fn probe(input: &[u8]) -> nom::IResult<&[u8], ()> {
                         INIT_TPKT_INIT_LENGTH_2] || 
        (cotp_payload[1] != COTP_CONNECT_REQUEST && cotp_payload[1] != COTP_CONNECT_CONFIRM)
     {
-        /*DEBUG*/
-        SCLogNotice!("FAILED");
         return Err(nom::Err::Error(nom::error::make_error(input, nom::error::ErrorKind::Verify)))
     }
 
-    /*DEBUG*/
     SCLogNotice!("SUCCESS");
     return Ok((&[], ()))
 }
 
-// C exports.
+// C exports. Almost only from template
 
 /// C entry point for a probing parser.
 unsafe extern "C" fn rs_s7_probing_parser(
