@@ -38,10 +38,11 @@ pub extern "C" fn rs_s7_inspect(tx: &S7Transaction, s7: &DetectS7Signature) -> u
         Some(tx_r) => tx_request = tx_r,
         _ => {SCLogNotice!("tx.request is NONE"); return 0}
     }
-    if tx_request.function == s7.function {
-        SCLogNotice!("ALERT");
-        return 1
-    }
+    //TODO reimplement detect function
+//    if tx_request.header == s7.function {
+//        SCLogNotice!("ALERT");
+//        return 1
+//    }
     SCLogNotice!("no match");
     return 0;
 }
