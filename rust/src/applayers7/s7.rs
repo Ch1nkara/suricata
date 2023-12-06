@@ -17,7 +17,10 @@
 
 use crate::applayer::{self, *};
 use crate::core::{AppProto, Flow, ALPROTO_UNKNOWN, IPPROTO_TCP};
-use nom7 as nom;
+use nom7::{
+    error::make_error, error::ErrorKind,
+    IResult,
+};
 use std;
 use std::{
     collections::VecDeque,
@@ -131,18 +134,9 @@ impl S7State {
     }
 
     fn parse_request(&mut self, input: &[u8]) -> AppLayerResult {
-        SCLogNotice!("start parse_request, input: {:x?}", input);
-        /* Not interested in frames that contain only TPKT and COTP headers
-        *  but no S7 PDU */
-        if input.len() <= COTP_HEADER_LENGTH + TPKT_HEADER_LENGTH {
-            SCLogNotice!("req_parsing DONE, too short, length: {}", input.len());
-            return AppLayerResult::ok();
-        }
-
-        /* Final check to verify that this is a s7 frame*/
-        if input[COTP_HEADER_LENGTH + TPKT_HEADER_LENGTH] != S7_PROTOCOLE_ID {
-            SCLogNotice!("req_parsing DONE, wrong protocol, id: {:x?}", input[7]);
-            return AppLayerResult::ok();
+        /* handle non s7 parasite frames such as cotp handshakes*/
+        if is_malformed_s7(input) {
+            return AppLayerResult::ok()
         }
 
         // If there was gap, check we can sync up again.
@@ -160,45 +154,35 @@ impl S7State {
             self.request_gap = false;
         }
 
-        match parser::s7_parse_request(input) {
+        match parser::s7_parse_message(input) {
             Ok((_rem, request)) => {
-                /* DEBUG */
-                SCLogNotice!("parser::s7_parse_request returned OK");
+                SCLogNotice!("Parsing request ok: {:?}", request);
                 let mut tx = self.new_tx();
                 tx.request = Some(request);
                 self.transactions.push_back(tx);
             }
-            Err(nom::Err::Incomplete(_)) => {
-                SCLogNotice!("req_parser returned ERR Incomplete");
+            Err(nom7::Err::Incomplete(_)) => {
+                SCLogNotice!("Parsing request failed: ERR Incomplete");
                 // Not enough data. This parser doesn't give us a good indication
                 // of how much data is missing so just ask for one more byte so the
                 // parse is called as soon as more data is received.
                 let needed = input.len() + 1;
                 return AppLayerResult::incomplete(0_u32, needed as u32);
             }
-            Err(_) => {
-                SCLogNotice!("req_parser returned ERR2, else");
+            Err(err) => {
+                SCLogNotice!("Parsing request failed: {}", err);
                 return AppLayerResult::err();
             }
         }
 
-        SCLogNotice!("req_parsing DONE, everything seems fine, input: {:x?}", input);
         // Input was fully consumed.
         return AppLayerResult::ok();
     }
 
     fn parse_response(&mut self, input: &[u8]) -> AppLayerResult {
-        SCLogNotice!("start parse_response, input: {:x?}", input);
-        /* We're not interested in empty s7 requests */
-        if input.len() < 8 {
-            SCLogNotice!("resp_parsing DONE, too short, length: {}", input.len());
-            return AppLayerResult::ok();
-        }
-
-        /* Final check to verify that this is a s7 frame*/
-        if input[7] != S7_PROTOCOLE_ID {
-            SCLogNotice!("resp_parsing DONE, wrong protocol, id: {:x?}", input[7]);
-            return AppLayerResult::ok();
+        /* handle non s7 parasite frames such as cotp handshakes*/
+        if is_malformed_s7(input) {
+            return AppLayerResult::ok()
         }
 
         //TODO how do we deal with gaps ?
@@ -215,21 +199,21 @@ impl S7State {
             self.response_gap = false;
         }
 
-        match parser::s7_parse_response(input) {
+        match parser::s7_parse_message(input) {
             Ok((_rem, response)) => {
-                SCLogNotice!("parser::s7_parse_response returned OK");
+                SCLogNotice!("Parsing response ok: {:?}", response);
                 if let Some(tx) = self.find_request() {
                     tx.response = Some(response);
-                    SCLogNotice!("Found response for request:");
+                    SCLogNotice!("Found response for request");
                 }
             }
-            Err(nom::Err::Incomplete(_)) => {
-                SCLogNotice!("resp_parser returned ERR Incomplete");
+            Err(nom7::Err::Incomplete(_)) => {
+                SCLogNotice!("Parsing response failed: ERR Incomplete");
                 let needed = input.len() + 1;
                 return AppLayerResult::incomplete(0_u32, needed as u32);
             }
-            Err(_) => {
-                SCLogNotice!("resp_parser returned ERR2, else");
+            Err(err) => {
+                SCLogNotice!("Parsing response failed: {}", err);
                 return AppLayerResult::err();
             }
         }
@@ -251,16 +235,15 @@ impl S7State {
 *  tcp connection is considered using s7 protocol if :
 *   - on port 102
 *   - valid COTP connection on top of TCP 
-* Not perfect but sufficient 
-*/
-fn probe(input: &[u8]) -> nom::IResult<&[u8], ()> {
+* Not perfect but sufficient */
+fn probe(input: &[u8]) -> IResult<&[u8], ()> {
     SCLogNotice!("in prober function");
     /* fail probe if PDU not the right size for comm setup */
     if ! input.len() == INIT_FRAME_LENGTH { 
-        return Err(nom::Err::Error(nom::error::make_error(input, nom::error::ErrorKind::Verify)))
+        return Err(nom7::Err::Error(make_error(input, ErrorKind::Verify)))
     }
 
-    let (cotp_payload, tpkt_payload) = nom::bytes::complete::take(4_usize)(input)?;
+    let (cotp_payload, tpkt_payload) = nom7::bytes::complete::take(4_usize)(input)?;
 
     /* fail probe if not the proper COTP initialisation */
     if tpkt_payload != [INIT_TPKT_VERSION, 
@@ -269,11 +252,27 @@ fn probe(input: &[u8]) -> nom::IResult<&[u8], ()> {
                         INIT_TPKT_INIT_LENGTH_2] || 
        (cotp_payload[1] != COTP_CONNECT_REQUEST && cotp_payload[1] != COTP_CONNECT_CONFIRM)
     {
-        return Err(nom::Err::Error(nom::error::make_error(input, nom::error::ErrorKind::Verify)))
+        return Err(nom7::Err::Error(make_error(input, ErrorKind::Verify)))
     }
 
     SCLogNotice!("SUCCESS");
     return Ok((&[], ()))
+}
+
+fn is_malformed_s7(input: &[u8]) -> bool{
+    SCLogNotice!("malformed input: {:x?}", input);
+    /* Not interested in frames that contain only TPKT and COTP headers
+    *  but no S7 PDU */
+    if input.len() <= COTP_HEADER_LENGTH + TPKT_HEADER_LENGTH {
+        SCLogNotice!("req_parsing DONE, too short, length: {}", input.len());
+        return true;
+    }
+    /* Final check to verify that this is a s7 frame */
+    if input[COTP_HEADER_LENGTH + TPKT_HEADER_LENGTH] != S7_PROTOCOLE_ID {
+        SCLogNotice!("req_parsing DONE, wrong protocol, id: {:x?}", input[COTP_HEADER_LENGTH + TPKT_HEADER_LENGTH]);
+        return true;
+    }
+    return false;
 }
 
 // C exports. Almost only from template

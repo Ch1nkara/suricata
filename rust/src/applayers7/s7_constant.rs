@@ -34,28 +34,16 @@ pub const COTP_HEADER_LENGTH: usize = 3;
 pub const COTP_CONNECT_REQUEST: u8 = 0xE0; 
 pub const COTP_CONNECT_CONFIRM: u8 = 0xD0;
 
-pub const S7_HEADER_LENGTH: usize = 10;
-pub const S7_LONG_HEADER_LENGTH: usize = 12;
 pub const S7_PROTOCOLE_ID: u8 = 0x32;
-pub const S7_ITEM_LENGTH: usize = 12;
-pub const S7_LEN_OF_FOLL_ADD_SPEC: u8 = 0x0A;
-pub const S7_AREA_DATA_BLOCKS: u8 = 0x84;
-
-pub const S7_ROSCTR_POS: usize = 1;
-pub const S7_PARAM_LENGTH_POS: usize = 6;
-pub const S7_DATA_LENGTH_POS: usize = 8;
-pub const S7_LEN_OF_FOLL_ADD_SPEC_POS: usize = 1;
-pub const S7_TRANSPORT_SIZE_POS: usize = 3;
-pub const S7_ITEM_LEN_POS: usize = 4;
-pub const S7_ITEM_DB_POS: usize = 6;
-pub const S7_ITEM_AREA_POS: usize = 8;
-pub const S7_ITEM_ADDR_POS: usize = 9;
+pub const S7_ADDR_OFFSET: usize = 5;
+pub const S7_BYTE_ADDR_LENGTH: usize = 16;
+pub const S7_BIT_ADDR_LENGTH: usize = 3;
 
 #[derive(Debug)]
 pub struct S7Comm {
     pub header: S7Header,
     pub parameter: Option<S7Parameter>,
-    pub data: Option<Vec<u8>>,
+    pub data: Vec<u8>,
 }
 
 #[derive(Debug)]
@@ -104,7 +92,7 @@ pub struct S7Item {
     pub db_number: u16,
     pub area: u8,
     pub byte_address: u16,
-    pub bit_address: u8,
+    pub bit_address: u16,
 }
 
 #[repr(u8)]
