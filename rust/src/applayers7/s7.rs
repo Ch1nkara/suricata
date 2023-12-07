@@ -260,7 +260,7 @@ fn probe(input: &[u8]) -> IResult<&[u8], ()> {
 }
 
 fn is_malformed_s7(input: &[u8]) -> bool{
-    SCLogNotice!("malformed input: {:x?}", input);
+    //SCLogNotice!("malformed input: {:x?}", input);
     /* Not interested in frames that contain only TPKT and COTP headers
     *  but no S7 PDU */
     if input.len() <= COTP_HEADER_LENGTH + TPKT_HEADER_LENGTH {

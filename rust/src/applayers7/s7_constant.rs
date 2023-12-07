@@ -15,6 +15,8 @@
  * 02110-1301, USA.
  */
 
+use std::os::raw::c_void;
+
 /* Frame length during the connection step */
 pub const INIT_FRAME_LENGTH: usize = 22;
 
@@ -104,57 +106,87 @@ pub enum S7TransportSize {
     Word,
 }
 
-impl std::str::FromStr for S7Rosctr {
-    type Err = String;
-    fn from_str(input_string: &str) -> Result<Self, Self::Err> {
-        match input_string {
-            "1" => Ok(S7Rosctr::JobRequest),
-            "2" => Ok(S7Rosctr::Ack),
-            "3" => Ok(S7Rosctr::AckData),
-            "7" => Ok(S7Rosctr::Userdata),
-            _ => Err(format!("'{}' cannot be converted with S7Rosctr::from_str", input_string)),
-        }
-    }
-}
 impl S7Rosctr {
     pub fn from_u8(input_u8: u8) -> Result<Self, String> {
         match input_u8 {
-            0x01u8 => Ok(S7Rosctr::JobRequest),
-            0x02u8 => Ok(S7Rosctr::Ack),
-            0x03u8 => Ok(S7Rosctr::AckData),
-            0x07u8 => Ok(S7Rosctr::Userdata),
+            0x01_u8 => Ok(S7Rosctr::JobRequest),
+            0x02_u8 => Ok(S7Rosctr::Ack),
+            0x03_u8 => Ok(S7Rosctr::AckData),
+            0x07_u8 => Ok(S7Rosctr::Userdata),
             _ => Err(format!("'{}' cannot be converted with S7Rosctr::from_u8", input_u8)),
         }
     }
 }
 
-impl std::str::FromStr for S7Function {
-    type Err = String;
-    fn from_str(input_string: &str) -> Result<Self, Self::Err> {
-        match input_string {
-            "read" => Ok(S7Function::ReadVariable),
-            "write" => Ok(S7Function::WriteVariable),
-            _ => Err(format!("'{}' cannot be converted with S7Function::from_str", input_string)),
-        }
-    }
-}
 impl S7Function {
     pub fn from_u8(input_u8: u8) -> Result<Self, String> {
         match input_u8 {
-            0x00u8 => Ok(S7Function::CpuServices),
-            0x04u8 => Ok(S7Function::ReadVariable),
-            0x05u8 => Ok(S7Function::WriteVariable),       
-            0x1Au8 => Ok(S7Function::RequestDownload),
-            0x1Bu8 => Ok(S7Function::DownloadBlock),
-            0x1Cu8 => Ok(S7Function::DownloadEnded),       
-            0x1Du8 => Ok(S7Function::StartUpload),
-            0x1Eu8 => Ok(S7Function::Upload),
-            0x1Fu8 => Ok(S7Function::EndUpload),
-            0x28u8 => Ok(S7Function::PlcControl),       
-            0x29u8 => Ok(S7Function::PlcStop),
-            0xF0u8 => Ok(S7Function::SetupCommunication),
+            0x00_u8 => Ok(S7Function::CpuServices),
+            0x04_u8 => Ok(S7Function::ReadVariable),
+            0x05_u8 => Ok(S7Function::WriteVariable),       
+            0x1A_u8 => Ok(S7Function::RequestDownload),
+            0x1B_u8 => Ok(S7Function::DownloadBlock),
+            0x1C_u8 => Ok(S7Function::DownloadEnded),       
+            0x1D_u8 => Ok(S7Function::StartUpload),
+            0x1E_u8 => Ok(S7Function::Upload),
+            0x1F_u8 => Ok(S7Function::EndUpload),
+            0x28_u8 => Ok(S7Function::PlcControl),       
+            0x29_u8 => Ok(S7Function::PlcStop),
+            0xF0_u8 => Ok(S7Function::SetupCommunication),
             _ => Err(format!("'{}' cannot be converted with S7Function::from_u8", input_u8)),
         }
+    }
+}
+
+impl std::str::FromStr for S7Item {
+    type Err = String;
+    fn from_str(input_string: &str) -> Result<Self, Self::Err> {
+
+        let mut parts: Vec<&str> = input_string.split('_').rev().collect();
+
+        if parts.len() != 4 {
+            return Err(format!("Error parsing '{}' with S7Item::from_str: wrong length", input_string));
+        }
+        let db_number;
+        //SCLogNotice!("S7Item::from_str, last element", err)
+        match parts.pop().unwrap_or("EOF").parse() {
+            Ok(result) => db_number = result,
+            _ => return Err(format!("Error parsing '{}' with S7Item::from_str: first element", input_string))
+        }
+        let transport_size;
+        match S7TransportSize::from_str(parts.pop().unwrap_or("EOF")) {
+            Ok(result) => transport_size = result,
+            _ => return Err(format!("Error parsing '{}' with S7Item::from_str: second element", input_string))
+        }
+
+        let address: Vec<&str> = parts.pop().unwrap_or("EOF").split('.').collect();
+        if address.len() != 2 {
+            return Err(format!("Error parsing '{}' with S7Item::from_str: third element", input_string));
+        }
+        let byte_address;
+        match address[0].parse() {
+            Ok(result) => byte_address = result,
+            _ => return Err(format!("Error parsing '{}' with S7Item::from_str: third element", input_string))
+        }
+        let bit_address;
+        match address[1].parse() {
+            Ok(result) => bit_address = result,
+            _ => return Err(format!("Error parsing '{}' with S7Item::from_str: third element", input_string))
+        }
+
+        let length;
+        match parts.pop().unwrap_or("EOF").parse() {
+            Ok(result) => length = result,
+            _ => return Err(format!("Error parsing '{}' with S7Item::from_str: fourth element", input_string))
+        }
+        Ok(S7Item {
+            transport_size,
+            length,
+            db_number,
+            area: 0x84_u8,
+            byte_address,
+            bit_address,
+        })
     }
 }
 
@@ -173,14 +205,42 @@ impl std::str::FromStr for S7TransportSize {
 impl S7TransportSize {
     pub fn from_u8(input_u8: u8) -> Result<Self, String> {
         match input_u8 {
-            0x01u8 => Ok(S7TransportSize::Bit),
-            0x02u8 => Ok(S7TransportSize::Byte),
-            0x03u8 => Ok(S7TransportSize::Char),
-            0x04u8 => Ok(S7TransportSize::Word),
+            0x01_u8 => Ok(S7TransportSize::Bit),
+            0x02_u8 => Ok(S7TransportSize::Byte),
+            0x03_u8 => Ok(S7TransportSize::Char),
+            0x04_u8 => Ok(S7TransportSize::Word),
             _ => Err(format!("'{}' cannot be converted with S7Function::from_u8", input_u8)),
         }
     }
 }
+
+#[derive(Debug, Default)]
+pub struct S7CommSignature {
+    pub header: Option<S7HeaderSignature>,
+    pub parameter: Option<S7ParameterSignature>,
+    pub data: Option<Vec<u8>>,
+    pub whitelist_mode: bool,
+}
+
+impl S7CommSignature {
+    pub fn from_ptr(ptr: *mut c_void) -> Option<Self> {
+        unsafe {
+            Some(std::ptr::read(ptr as *const Self))
+        }
+    }
+}
+
+#[derive(Debug, Default)]
+pub struct S7HeaderSignature {
+    pub rosctr: Vec<S7Rosctr>,
+}
+
+#[derive(Debug, Default)]
+pub struct S7ParameterSignature {
+    pub function: Vec<S7Function>,
+    pub item: Option<Vec<S7Item>>,
+}
+
 
 //TODO unit tests
 //verify line length 

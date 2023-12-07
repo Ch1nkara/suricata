@@ -71,14 +71,14 @@ static void DetectS7Free(DetectEngineCtx *de_ctx, void *ptr) {
 static int DetectS7S7Setup(DetectEngineCtx *de_ctx, Signature *s, const char *str)
 {
     SCEnter();
-    DetectS7Signature *s7 = NULL;
+    S7CommSignature *s7 = NULL;
     SigMatch        *sm = NULL;
     s->init_data->list = g_s7_rust_id;
 
     if (DetectSignatureSetAppProto(s, ALPROTO_S7) != 0)
         return -1;
 
-    if ((s7 = rs_s7_parse(str)) == NULL) {
+    if ((s7 = rs_s7_parse(str, s7)) == NULL) {
         SCLogError("invalid s7 option");
         goto error;
     }
