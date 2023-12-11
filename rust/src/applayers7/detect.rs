@@ -208,7 +208,13 @@ fn parameter_check(tx_req: &S7Comm, s7_sign: &S7CommSignature) -> (bool, bool) {
          * "only look for match in read or write frames and ignore other frames" */
         _ => return (false, true)
     }
-
+    /* Before checking for item inclusion, check that the function is correct */
+    match param_sign.function.first() {
+        Some(result) => if tx_param.function != *result {
+                return (false, true)
+            },
+        _ => return (false, false)
+    }
     /* last check, if tx_item is included in item_sign */
     for element in tx_item {
         if ! item_sign.contains(&element) {
