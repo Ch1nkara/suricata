@@ -26,13 +26,12 @@ use std;
 
 use super::s7_constant::*;
 
-    /* Parsing the s7 frame:
-     * TPKT_Header + COTP_Header + S7_Header + Parameter + Data 
-     * with s7 PDU: S7_Header + Parameter + Data
-    */
-
+/* Parsing the s7 frame:
+ * TPKT_Header + COTP_Header + S7_Header + Parameter + Data 
+ * with s7 PDU: S7_Header + Parameter + Data */
 pub fn s7_parse_message(input: &[u8]) -> IResult<&[u8], S7Comm> {
     SCLogNotice!("starting parser: {:x?}", input);
+    /* Parsing the header part */
     let (remainder, header) = s7_parse_header(input)?;
     //SCLogNotice!("parsing header: {:?}", header);
 
@@ -51,7 +50,7 @@ pub fn s7_parse_message(input: &[u8]) -> IResult<&[u8], S7Comm> {
 
     /* Checking that we have no unexpected remainder */
     if ! remainder.is_empty() {
-        SCLogNotice!("LAST REMAINDER NOT EMPTY: {:x?}", remainder);
+        SCLogError!("Unexpected remainder while parsing s7 PDU: {:x?}", remainder);
         return Err(Error(make_error(input, ErrorKind::Eof)))
     }
 
@@ -63,28 +62,28 @@ pub fn s7_parse_message(input: &[u8]) -> IResult<&[u8], S7Comm> {
 }
 
 fn s7_parse_header(input: &[u8]) -> IResult<&[u8], S7Header> {
+    /* Get rid of the tpkt and cotp headers*/
     let (s7_pdu, _) = take(TPKT_HEADER_LENGTH
         + COTP_HEADER_LENGTH)(input)?;   
 
     let (remainder, proto_id) = be_u8(s7_pdu)?;
     if proto_id != S7_PROTOCOLE_ID {
-        SCLogNotice!("Not a s7 pdu: {:x?}", s7_pdu);
+        SCLogError!("Not a s7 pdu: {:x?}", s7_pdu);
         return Err(Error(make_error(input, ErrorKind::Verify)))
     }
     let (remainder, rosctr_value) = be_u8(remainder)?;
-    /* not parsed: reserved bytes (2bytes) and PDU ref (2bytes) */
-    let (remainder, _) = take(4_usize)(remainder)?;
-    let (remainder, param_length) = be_u16(remainder)?;
-    let (remainder, data_length) = be_u16(remainder)?;
-
     let rosctr;
     match S7Rosctr::from_u8(rosctr_value) {
         Ok(result) => rosctr = result,
         Err(msg) => {
-            SCLogNotice!("Error parsing S7Rosctr: {}", msg);
+            SCLogError!("Error parsing S7Rosctr: {}", msg);
             return Err(Error(make_error(s7_pdu, ErrorKind::Verify)))
         }
     }
+    /* not parsed: reserved bytes (2bytes) and PDU ref (2bytes) */
+    let (remainder, _) = take(4_usize)(remainder)?;
+    let (remainder, param_length) = be_u16(remainder)?;
+    let (remainder, data_length) = be_u16(remainder)?;
 
     let s7_header = S7Header {
         rosctr,
@@ -107,7 +106,7 @@ fn s7_parse_parameter(parameter_slice: &[u8]) -> IResult<&[u8], S7Parameter> {
     match S7Function::from_u8(function_value) {
         Ok(result) => function = result,
         Err(msg) => {
-            SCLogNotice!("Error parsing S7Function: {}", msg);
+            SCLogError!("Error parsing S7Function: {}", msg);
             return Err(Error(make_error(parameter_slice, ErrorKind::Verify)))
         }
     }
@@ -139,9 +138,10 @@ fn s7_parse_item(param_slice: &[u8]) -> IResult<&[u8], Vec<S7Item>> {
         let transport_size_value;
         let length; let db_number;
         let area; let address;
-        /* not parsed:  Variable spec (1byte)
-         * Length of following address spec (1byte)
-         * Syntax Id (1byte) */
+        /* not parsed:  
+         * - Variable spec (1byte)
+         * - Length of following address spec (1byte)
+         * - Syntax Id (1byte) */
         (remainder, _) = take(3_usize)(remainder)?;
         (remainder, transport_size_value) = be_u8(remainder)?;
         (remainder, length) = be_u16(remainder)?;
@@ -153,17 +153,22 @@ fn s7_parse_item(param_slice: &[u8]) -> IResult<&[u8], Vec<S7Item>> {
         match S7TransportSize::from_u8(transport_size_value) {
             Ok(result) => transport_size = result,
             Err(msg) => {
-                SCLogNotice!("Error parsing S7TransportSize: {}", msg);
+                SCLogError!("Error parsing S7TransportSize: {}", msg);
                 return Err(Error(make_error(param_slice, ErrorKind::Verify)))
             }
         }
 
-        /* Parse the address which is not intuitive */
+        /* Parse the address (3bytes) which is not intuitive: 
+         * .....AAA (first byte) 
+         * AAAAAAAA (2nd byte) 
+         * AAAAABBB (third byte)
+         * with A being the byte_address bits 
+         * B being the bit_address bits */
         let (addr_rem, byte_address);
         match parse_bits((address, S7_ADDR_OFFSET), S7_BYTE_ADDR_LENGTH) {
             Ok((rem, result)) => (addr_rem, byte_address) = (rem, result),
             Err(err) => {
-                SCLogNotice!("Error parsing byte adress: {}", err);
+                SCLogError!("Error parsing byte adress: {}", err);
                 return Err(Error(make_error(param_slice, ErrorKind::Eof)))
             }
         }
@@ -171,7 +176,7 @@ fn s7_parse_item(param_slice: &[u8]) -> IResult<&[u8], Vec<S7Item>> {
         match parse_bits(addr_rem, S7_BIT_ADDR_LENGTH) {
             Ok((_, result)) => bit_address = result,
             Err(err) => {
-                SCLogNotice!("Error parsing bit adress: {}", err);
+                SCLogError!("Error parsing bit adress: {}", err);
                 return Err(Error(make_error(param_slice, ErrorKind::Eof)))
             }
         }
@@ -188,7 +193,7 @@ fn s7_parse_item(param_slice: &[u8]) -> IResult<&[u8], Vec<S7Item>> {
 
     /* Checking that we have no unexpected remainder */
     if ! remainder.is_empty() {
-        SCLogNotice!("PARSE ITEM REMAINDER NOT EMPTY: {:x?}", remainder);
+        SCLogError!("Unexpected remainder while parsing items: {:x?}", remainder);
         return Err(Error(make_error(param_slice, ErrorKind::Eof)))
     }
     return Ok((&[], item_list))

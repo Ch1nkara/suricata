@@ -15,8 +15,6 @@
  * 02110-1301, USA.
  */
 
-use std::os::raw::c_void;
-
 /* Frame length during the connection step */
 pub const INIT_FRAME_LENGTH: usize = 22;
 
@@ -222,14 +220,6 @@ pub struct S7CommSignature {
     pub whitelist_mode: bool,
 }
 
-impl S7CommSignature {
-    pub fn from_ptr(ptr: *mut c_void) -> Option<Self> {
-        unsafe {
-            Some(std::ptr::read(ptr as *const Self))
-        }
-    }
-}
-
 #[derive(Debug, Default)]
 pub struct S7HeaderSignature {
     pub rosctr: Vec<S7Rosctr>,
@@ -240,7 +230,6 @@ pub struct S7ParameterSignature {
     pub function: Vec<S7Function>,
     pub item: Option<Vec<S7Item>>,
 }
-
 
 //TODO unit tests
 //verify line length 

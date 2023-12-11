@@ -19,8 +19,8 @@ use super::s7::S7Transaction;
 use crate::jsonbuilder::{JsonBuilder, JsonError};
 use std;
 
+//TODO log stuff
 fn log_s7(_tx: &S7Transaction, _js: &mut JsonBuilder) -> Result<(), JsonError> {
-
     Ok(())
 }
 

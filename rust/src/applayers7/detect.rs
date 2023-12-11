@@ -24,6 +24,7 @@ use std::{
     str::FromStr
 };
 
+/* Parsing the suricata rule when keyword is s7 */
 fn parse_rule(rule_str: &str) -> Result<S7CommSignature, ()> {
     //SCLogNotice!("rule_str: {}", rule_str);
     let mut words: Vec<&str> = rule_str.split_whitespace().rev().collect();
@@ -52,6 +53,7 @@ fn parse_rule(rule_str: &str) -> Result<S7CommSignature, ()> {
         if word_to_parse == "and" {
             word_to_parse = words.pop().unwrap_or("EOF");
         }
+        /* exit condition: words vec is empty*/
         if word_to_parse == "EOF" {
             break;
         }
@@ -77,11 +79,16 @@ fn parse_rule(rule_str: &str) -> Result<S7CommSignature, ()> {
     let mut s7_sign: S7CommSignature = Default::default();
     s7_sign.whitelist_mode = whitelist_mode;
 
+    /* Building the signature. There are 3 types of signature: rosctr, function or read/write
+     * Checking which list is not empty to deduce the type of signature and building it */
     if ! rosctr_list.is_empty() {
+        /* signature type rosctr */
         s7_sign.header = Some(S7HeaderSignature {rosctr: rosctr_list});
     } else if ! function_list.is_empty() {
+        /* signature type function */
         s7_sign.parameter = Some(S7ParameterSignature {function: function_list, item: None});
     } else if ! item_list.is_empty() {
+        /* signature type read/write */
         s7_sign.parameter = Some(S7ParameterSignature {function: vec![function], item: Some(item_list)});
     }
     SCLogNotice!("signature: {:?}", s7_sign); 
@@ -123,10 +130,11 @@ fn parse_item_word(word_to_parse: &str, mut item_list: Vec<S7Item>) -> Result<Ve
 
 /// Compares a transaction to a signature to determine whether the transaction
 /// matches the signature. If it does, 1 is returned; otherwise 0 is returned.
-/* In the transaction, only the request is compared to the signature
+/*
  *
+
  * In whitelist mode, for each non-empty field of the signature, the field of 
- * the request must be in the Vec of the corresponding field of the signature. 
+ * the request must be in the vector of the corresponding field of the signature. 
  * Otherwise 1 is returned (alert is raised). 
  *
  * In non-whitelist mode, for each non-empty field of the signature, 1 is 
@@ -135,43 +143,48 @@ fn parse_item_word(word_to_parse: &str, mut item_list: Vec<S7Item>) -> Result<Ve
 #[no_mangle]
 pub extern "C" fn rs_s7_inspect(tx: &S7Transaction, s7_sign: &S7CommSignature) -> u8 {
     SCLogNotice!("inspecting transaction: \n{:?} \nagainst signature: \n{:?}", tx, s7_sign);
-    /* Do not inspect if response in not None. Because inspection was already made
-     * during the request, so no need to do it again*/
+    /* In the transaction, only the request is compared to the signature  */
+    let tx_request: &S7Comm;
+    match &tx.request {
+        Some(tx_r) => tx_request = tx_r,
+        _ => {
+            SCLogError!("Error, tx.request is NONE, no match");
+            return 0
+        }
+    }
+    /* Do not inspect if response in not None since inspection was already made
+     * during the request */
      match &tx.response {
         None => {},
         _ => {
-            SCLogNotice!("inspection resultA: {}", 0);
+            SCLogNotice!("inspection result: no match (response found)");
             return 0
         }
      }
 
-    let tx_request: &S7Comm;
-    match &tx.request {
-        Some(tx_r) => tx_request = tx_r,
-        _ => {SCLogNotice!("tx.request is NONE"); return 0}
-    }
-
-    /* Check are done according to the corresponding rule: rosctr, function, read/write */
+    /* Signature type rosctr, check if the tx rosctr is in the signature */
     let field_in_vec = header_check(tx_request, s7_sign);
     if field_in_vec {
-        SCLogNotice!("rosctr match result is true");
+        SCLogNotice!("inspection result: {} (header check)", field_in_vec ^ s7_sign.whitelist_mode);
         return (field_in_vec ^ s7_sign.whitelist_mode) as u8;
     }
-    
-    let (field_in_vec, cant_compare) = parameter_check(tx_request, s7_sign);
-    SCLogNotice!("parameter match result: {}", field_in_vec);
 
-    /* Do not raise alert if signature contains item vec but the tx_request do not */
+    /* Next, signature type function and read/write match in the parameter_check function*/
+    let (field_in_vec, cant_compare) = parameter_check(tx_request, s7_sign);
+
+    /* Handle case when signature type is read/write but tx function is not read/write
+     * In such case, by design, we return "no match" */
     if cant_compare {
-        SCLogNotice!("inspection resultB: {}", 0);
+        SCLogNotice!("inspection result: no match (cant compare)");
         return 0
     }
 
-    SCLogNotice!("inspection resultC: {}", field_in_vec ^ s7_sign.whitelist_mode);
+    SCLogNotice!("inspection result: {} (parameter check)", field_in_vec ^ s7_sign.whitelist_mode);
     return (field_in_vec ^ s7_sign.whitelist_mode) as u8;
     /* XOR explanation: 
-     * in whitelist mod, match (alert) if not field_in_vec otherwise do not match
-     * normal mod, match if field_in_vec. This can be sumurized with a xor*/ 
+     * in whitelist mod, match (= return 1) if (! field_in_vec) otherwise do not match (=return 0)
+     * in normal mod (! whitelist), match if field_in_vec is true otherwise do not match. 
+     * This can be sumurized with a xor */ 
 }
 
 fn header_check(tx_req: &S7Comm, s7_sign: &S7CommSignature) -> bool {
@@ -195,10 +208,11 @@ fn parameter_check(tx_req: &S7Comm, s7_sign: &S7CommSignature) -> (bool, bool) {
     let item_sign;
     match &param_sign.item {
         Some(result) => item_sign = result,
-        /* If there are no items in the signature, we just check if the function 
-         * of the request is in the signature */
+        /* If there are no items in the signature, we are in a signature type function, 
+         * so we just check if the tx function is in the signature */
         _ => return (param_sign.function.contains(&tx_param.function), false)
     }
+    /* Beyond this point, signature type can only be read/write */ 
     let tx_item;
     match &tx_param.item {
         Some(result) => tx_item = result,
@@ -215,7 +229,7 @@ fn parameter_check(tx_req: &S7Comm, s7_sign: &S7CommSignature) -> (bool, bool) {
             },
         _ => return (false, false)
     }
-    /* last check, if tx_item is included in item_sign */
+    /* last check, if tx_item vector is included in item_sign vector */
     for element in tx_item {
         if ! item_sign.contains(&element) {
             return (false, false)
@@ -224,17 +238,12 @@ fn parameter_check(tx_req: &S7Comm, s7_sign: &S7CommSignature) -> (bool, bool) {
     return (true, false)
 }
 
-
-
 /// Intermediary function between the C code and the parsing functions.
 #[no_mangle]
 pub unsafe extern "C" fn rs_s7_parse(c_arg: *const c_char) -> *mut c_void {
-    SCLogNotice!("in s7_parse");
     if c_arg.is_null() {
-        SCLogNotice!("arg null");
         return std::ptr::null_mut();
     }
-    SCLogNotice!("arg NOT null");
     if let Ok(arg) = CStr::from_ptr(c_arg).to_str() {
         match parse_rule(arg)
         {
