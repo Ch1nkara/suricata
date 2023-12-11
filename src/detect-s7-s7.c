@@ -78,7 +78,7 @@ static int DetectS7S7Setup(DetectEngineCtx *de_ctx, Signature *s, const char *st
     if (DetectSignatureSetAppProto(s, ALPROTO_S7) != 0)
         return -1;
 
-    if ((s7 = rs_s7_parse(str, s7)) == NULL) {
+    if ((s7 = rs_s7_parse(str)) == NULL) {
         SCLogError("invalid s7 option");
         goto error;
     }

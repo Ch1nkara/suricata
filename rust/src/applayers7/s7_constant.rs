@@ -87,7 +87,7 @@ pub enum S7Function {
     SetupCommunication,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct S7Item {
     pub transport_size: S7TransportSize,
     pub length: u16,
