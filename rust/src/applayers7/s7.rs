@@ -44,7 +44,7 @@ enum S7Event {}
 
 #[derive(Debug)]
 pub struct S7Transaction {
-    tx_id: u64,
+    pub tx_id: u64,
     pub request: Option<S7Comm>,
     pub response: Option<S7Comm>,
 
@@ -98,7 +98,7 @@ impl S7State {
         Default::default()
     }
 
-    // Free a transaction by ID.
+    /* Free a transaction by ID. */
     fn free_tx(&mut self, tx_id: u64) {
         let len = self.transactions.len();
         let mut found = false;
@@ -144,13 +144,13 @@ impl S7State {
         if self.request_gap {
             if probe(input).is_err() {
                 SCLogNotice!("req_parsing DONE, gap is true");
-                // The parser now needs to decide what to do as we are not in sync.
-                // For this s7, we'll just try again next time.
+                /* The parser now needs to decide what to do as we are not in sync.
+                 * Here, we'll just try again next time. */
                 return AppLayerResult::ok();
             }
 
-            // It looks like we're in sync with a message header, clear gap
-            // state and keep parsing.
+            /* It looks like we're in sync with a message header, clear gap
+             * state and keep parsing */
             self.request_gap = false;
         }
 
@@ -163,9 +163,9 @@ impl S7State {
             }
             Err(nom7::Err::Incomplete(_)) => {
                 SCLogNotice!("Parsing request failed: ERR Incomplete");
-                // Not enough data. This parser doesn't give us a good indication
-                // of how much data is missing so just ask for one more byte so the
-                // parse is called as soon as more data is received.
+                /* Not enough data. This parser doesn't give us a good indication
+                 * of how much data is missing so just ask for one more byte so the
+                 * parse is called as soon as more data is received. */
                 let needed = input.len() + 1;
                 return AppLayerResult::incomplete(0_u32, needed as u32);
             }
@@ -175,7 +175,7 @@ impl S7State {
             }
         }
 
-        // Input was fully consumed.
+        /* Input was fully consumed. */
         return AppLayerResult::ok();
     }
 
@@ -189,13 +189,13 @@ impl S7State {
         if self.response_gap {
             if probe(input).is_err() {
                 SCLogNotice!("resp_parsing DONE, gap is true");
-                // The parser now needs to decide what to do as we are not in sync.
-                // For this s8, we'll just try again next time.
+                /* The parser now needs to decide what to do as we are not in sync.
+                 * Here, we'll just try again next time. */
                 return AppLayerResult::ok();
             }
 
-            // It looks like we're in sync with a message header, clear gap
-            // state and keep parsing.
+            /* It looks like we're in sync with a message header, clear gap
+             * state and keep parsing */
             self.response_gap = false;
         }
 
@@ -218,7 +218,7 @@ impl S7State {
             }
         }
 
-        // All input was fully consumed.
+        /* All input was fully consumed. */
         return AppLayerResult::ok();
     }
 
@@ -275,8 +275,7 @@ fn is_malformed_s7(input: &[u8]) -> bool{
     return false;
 }
 
-// C exports. Almost only from template
-
+/* C code dependencies */
 /// C entry point for a probing parser.
 unsafe extern "C" fn rs_s7_probing_parser(
     _flow: *const Flow, _direction: u8, input: *const u8, input_len: u32, _rdir: *mut u8,

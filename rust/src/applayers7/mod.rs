@@ -15,10 +15,11 @@
  * 02110-1301, USA.
  */
 
-//! S7 Application layer parser, logger, detect module.
+//! S7 Application layer parser, logger, rule parser, detect module.
 
 pub mod logger;
 mod parser;
 pub mod s7;
 mod detect;
 mod s7_constant;
+mod rule_parser;

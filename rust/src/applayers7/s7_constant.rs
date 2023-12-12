@@ -62,6 +62,7 @@ pub enum S7Rosctr {
     Userdata,
 }
 
+
 #[derive(Debug)]
 pub struct S7Parameter {
     pub function: S7Function,
@@ -212,23 +213,33 @@ impl S7TransportSize {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct S7CommSignature {
-    pub header: Option<S7HeaderSignature>,
-    pub parameter: Option<S7ParameterSignature>,
-    pub data: Option<Vec<u8>>,
+    pub sign_type: S7SignatureType,
     pub whitelist_mode: bool,
-}
-
-#[derive(Debug, Default)]
-pub struct S7HeaderSignature {
-    pub rosctr: Vec<S7Rosctr>,
-}
-
-#[derive(Debug, Default)]
-pub struct S7ParameterSignature {
-    pub function: Vec<S7Function>,
+    pub rosctr: Option<Vec<S7Rosctr>>,
+    pub function: Option<Vec<S7Function>>,
     pub item: Option<Vec<S7Item>>,
+}
+
+#[repr(u8)]
+#[derive(Debug, PartialEq)]
+pub enum S7SignatureType {
+    Rosctr,
+    Function,
+    ReadWrite,
+}
+impl std::str::FromStr for S7SignatureType {
+    type Err = String;
+    fn from_str(input_string: &str) -> Result<Self, Self::Err> {
+        match input_string {
+            "rosctr" => Ok(S7SignatureType::Rosctr),
+            "function" => Ok(S7SignatureType::Function),
+            "read" => Ok(S7SignatureType::ReadWrite),
+            "write" => Ok(S7SignatureType::ReadWrite),
+            _ => Err(format!("'{}' cannot be converted with S7SignatureType::from_str", input_string)),
+        }
+    }
 }
 
 //TODO unit tests
