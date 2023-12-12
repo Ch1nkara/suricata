@@ -17,7 +17,6 @@
 
 use super::s7::S7Transaction;
 use super::s7_constant::{S7Comm, S7CommSignature, S7SignatureType};
-use std::os::raw::c_void;
 
 /// Compares a transaction to a signature to determine whether the transaction
 /// matches the signature. If it does, 1 is returned; otherwise 0 is returned.
@@ -133,13 +132,6 @@ fn is_item_in_vec(tx_req: &S7Comm, s7_sign: &S7CommSignature) -> bool {
         }
     }
     return true
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn rs_s7_free(ptr: *mut c_void) {
-    if !ptr.is_null() {
-        let _ = Box::from_raw(ptr as *mut S7CommSignature);
-    }
 }
 
 //TODO unit tests

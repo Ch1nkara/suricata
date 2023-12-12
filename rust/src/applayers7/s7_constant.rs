@@ -105,6 +105,23 @@ pub enum S7TransportSize {
     Word,
 }
 
+#[derive(Debug, PartialEq)]
+pub struct S7CommSignature {
+    pub sign_type: S7SignatureType,
+    pub whitelist_mode: bool,
+    pub rosctr: Option<Vec<S7Rosctr>>,
+    pub function: Option<Vec<S7Function>>,
+    pub item: Option<Vec<S7Item>>,
+}
+
+#[repr(u8)]
+#[derive(Debug, PartialEq)]
+pub enum S7SignatureType {
+    Rosctr,
+    Function,
+    ReadWrite,
+}
+
 impl S7Rosctr {
     pub fn from_u8(input_u8: u8) -> Result<Self, String> {
         match input_u8 {
@@ -146,38 +163,32 @@ impl std::str::FromStr for S7Item {
         if parts.len() != 4 {
             return Err(format!("Error parsing '{}' with S7Item::from_str: wrong length", input_string));
         }
-        let db_number;
-        //SCLogNotice!("S7Item::from_str, last element", err)
-        match parts.pop().unwrap_or("EOF").parse() {
-            Ok(result) => db_number = result,
+        let db_number = match parts.pop().unwrap_or("EOF").parse() {
+            Ok(result) => result,
             _ => return Err(format!("Error parsing '{}' with S7Item::from_str: first element", input_string))
-        }
-        let transport_size;
-        match S7TransportSize::from_str(parts.pop().unwrap_or("EOF")) {
-            Ok(result) => transport_size = result,
+        };
+        let transport_size = match S7TransportSize::from_str(parts.pop().unwrap_or("EOF")) {
+            Ok(result) => result,
             _ => return Err(format!("Error parsing '{}' with S7Item::from_str: second element", input_string))
-        }
+        };
 
         let address: Vec<&str> = parts.pop().unwrap_or("EOF").split('.').collect();
         if address.len() != 2 {
             return Err(format!("Error parsing '{}' with S7Item::from_str: third element", input_string));
         }
-        let byte_address;
-        match address[0].parse() {
-            Ok(result) => byte_address = result,
+        let byte_address = match address[0].parse() {
+            Ok(result) => result,
             _ => return Err(format!("Error parsing '{}' with S7Item::from_str: third element", input_string))
-        }
-        let bit_address;
-        match address[1].parse() {
-            Ok(result) => bit_address = result,
+        };
+        let bit_address = match address[1].parse() {
+            Ok(result) => result,
             _ => return Err(format!("Error parsing '{}' with S7Item::from_str: third element", input_string))
-        }
+        };
 
-        let length;
-        match parts.pop().unwrap_or("EOF").parse() {
-            Ok(result) => length = result,
+        let length = match parts.pop().unwrap_or("EOF").parse() {
+            Ok(result) => result,
             _ => return Err(format!("Error parsing '{}' with S7Item::from_str: fourth element", input_string))
-        }
+        };
         Ok(S7Item {
             transport_size,
             length,
@@ -213,22 +224,6 @@ impl S7TransportSize {
     }
 }
 
-#[derive(Debug)]
-pub struct S7CommSignature {
-    pub sign_type: S7SignatureType,
-    pub whitelist_mode: bool,
-    pub rosctr: Option<Vec<S7Rosctr>>,
-    pub function: Option<Vec<S7Function>>,
-    pub item: Option<Vec<S7Item>>,
-}
-
-#[repr(u8)]
-#[derive(Debug, PartialEq)]
-pub enum S7SignatureType {
-    Rosctr,
-    Function,
-    ReadWrite,
-}
 impl std::str::FromStr for S7SignatureType {
     type Err = String;
     fn from_str(input_string: &str) -> Result<Self, Self::Err> {
