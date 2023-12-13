@@ -48,3 +48,12 @@ qa/coccinelle/struct-flags.cocci
 
 /suricata-update/*
 !/suricata-update/Makefile.am
+
+libhtp/*
+
+compile
+depcomp
+install-sh
+missing
+suricata.logrotate
+suricata.service
