@@ -23,12 +23,15 @@ use std::{
     str::FromStr
 };
 
+/* EXAMPLE OF SURICATA RULE: alert s7 any any -> any any (msg:"S7 Test Rule 
+ * read"; s7:read ! 1_2_0.0_4 1_2_3.0_8; sid:1; rev:1;) */ 
+
 /* Parsing the suricata rule to build a s7 signature. There are 3 types of 
  * signature: rosctr, function or read/write. The signature can be in whitelist
  * mode: an alert are raised if the s7 traffic is not included in the signature
  * Or, in normal mode (not whitelist), an alert is raised if the traffic is 
  * included in the signature */
- fn parse_rule(rule_str: &str) -> Result<S7CommSignature, ()> {
+fn parse_rule(rule_str: &str) -> Result<S7CommSignature, ()> {
     //SCLogNotice!("rule_str: {}", rule_str);
     let mut words: Vec<&str> = rule_str.split_whitespace().rev().collect();
 
@@ -158,4 +161,268 @@ pub unsafe extern "C" fn rs_s7_parse(c_arg: *const c_char) -> *mut c_void {
         }
     }
     std::ptr::null_mut()
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn rs_s7_free(ptr: *mut c_void) {
+    if !ptr.is_null() {
+        let _ = Box::from_raw(ptr as *mut S7CommSignature);
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::parse_rule;
+    use super::super::s7_constant::{S7Item, S7SignatureType, S7CommSignature, 
+            S7Rosctr::*, S7Function::*, S7TransportSize::*};
+    #[test]
+    fn test_parse() {
+        assert_eq!(
+            parse_rule("rosctr 1"),
+            Ok(S7CommSignature {
+                sign_type: S7SignatureType::Rosctr, 
+                whitelist_mode: false,
+                rosctr: Some(vec![JobRequest]),
+                function: None,
+                item: None,
+            })
+        );
+        assert_eq!(
+            parse_rule("rosctr ! 2 "),
+            Ok(S7CommSignature {
+                sign_type: S7SignatureType::Rosctr, 
+                whitelist_mode: true,
+                rosctr: Some(vec![Ack]),
+                function: None,
+                item: None,
+            })
+        );
+        assert_eq!(
+            parse_rule("rosctr !2 and 7 and 3"),
+            Ok(S7CommSignature {
+                sign_type: S7SignatureType::Rosctr, 
+                whitelist_mode: true,
+                rosctr: Some(vec![Ack, Userdata, AckData]),
+                function: None,
+                item: None,
+            })
+        );
+        assert_eq!(
+            parse_rule("rosctr ! 7 1 3 "),
+            Ok(S7CommSignature {
+                sign_type: S7SignatureType::Rosctr, 
+                whitelist_mode: true,
+                rosctr: Some(vec![Userdata, JobRequest, AckData]),
+                function: None,
+                item: None,
+            })
+        );
+        assert_eq!(
+            parse_rule("rosctr 3 1 7"),
+            Ok(S7CommSignature {
+                sign_type: S7SignatureType::Rosctr, 
+                whitelist_mode: false,
+                rosctr: Some(vec![AckData, JobRequest, Userdata]),
+                function: None,
+                item: None,
+            })
+        );
+        assert_eq!(
+            parse_rule("rosctr 3 and 1 and 2 "),
+            Ok(S7CommSignature {
+                sign_type: S7SignatureType::Rosctr, 
+                whitelist_mode: false,
+                rosctr: Some(vec![AckData, JobRequest, Ack]),
+                function: None,
+                item: None,
+            })
+        );
+        assert_eq!(
+            parse_rule("function 29 "),
+            Ok(S7CommSignature {
+                sign_type: S7SignatureType::Function, 
+                whitelist_mode: false,
+                rosctr: None,
+                function: Some(vec![StartUpload]),
+                item: None,
+            })
+        );
+        assert_eq!(
+            parse_rule("function ! 240"),
+            Ok(S7CommSignature {
+                sign_type: S7SignatureType::Function, 
+                whitelist_mode: true,
+                rosctr: None,
+                function: Some(vec![SetupCommunication]),
+                item: None,
+            })
+        );
+        assert_eq!(
+            parse_rule("function !5 and 31 and 27 "),
+            Ok(S7CommSignature {
+                sign_type: S7SignatureType::Function, 
+                whitelist_mode: true,
+                rosctr: None,
+                function: Some(vec![WriteVariable, EndUpload, DownloadBlock]),
+                item: None,
+            })
+        );
+        assert_eq!(
+            parse_rule("function ! 0 41 30"),
+            Ok(S7CommSignature {
+                sign_type: S7SignatureType::Function, 
+                whitelist_mode: true,
+                rosctr: None,
+                function: Some(vec![CpuServices, PlcStop, Upload]),
+                item: None,
+            })
+        );
+        assert_eq!(
+            parse_rule("function 4 28 40 "),
+            Ok(S7CommSignature {
+                sign_type: S7SignatureType::Function, 
+                whitelist_mode: false,
+                rosctr: None,
+                function: Some(vec![ReadVariable, DownloadEnded, PlcControl]),
+                item: None,
+            })
+        );
+        assert_eq!(
+            parse_rule("function 26 and 240 and 31"),
+            Ok(S7CommSignature {
+                sign_type: S7SignatureType::Function, 
+                whitelist_mode: false,
+                rosctr: None,
+                function: Some(vec![RequestDownload, SetupCommunication, EndUpload]),
+                item: None,
+            })
+        );
+        assert_eq!(
+            parse_rule("read 65535_4_65535.7_65535"),
+            Ok(S7CommSignature {
+                sign_type: S7SignatureType::ReadWrite, 
+                whitelist_mode: false,
+                rosctr: None,
+                function: Some(vec![ReadVariable]),
+                item: Some(vec![S7Item {
+                    transport_size: Word,
+                    length: 65535,
+                    db_number: 65535,
+                    area: 132,
+                    byte_address: 65535,
+                    bit_address: 7,
+                }]),
+            })
+        );
+        assert_eq!(
+            parse_rule("write ! 1_3_3.0_8"),
+            Ok(S7CommSignature {
+                sign_type: S7SignatureType::ReadWrite, 
+                whitelist_mode: true,
+                rosctr: None,
+                function: Some(vec![WriteVariable]),
+                item: Some(vec![S7Item {
+                    transport_size: Char,
+                    length: 8,
+                    db_number: 1,
+                    area: 132,
+                    byte_address: 3,
+                    bit_address: 0,
+                }]),
+            })
+        );
+        assert_eq!(
+            parse_rule("read !42356_2_21890.2_55001 and 1_1_0.0_8 and 5_2_120.5_8"),
+            Ok(S7CommSignature {
+                sign_type: S7SignatureType::ReadWrite, 
+                whitelist_mode: true,
+                rosctr: None,
+                function: Some(vec![ReadVariable]),
+                item: Some(vec![S7Item {
+                    transport_size: Byte,
+                    length: 55001,
+                    db_number: 42356,
+                    area: 132,
+                    byte_address: 21890,
+                    bit_address: 2,
+                }, S7Item {
+                    transport_size: Bit,
+                    length: 8,
+                    db_number: 1,
+                    area: 132,
+                    byte_address: 0,
+                    bit_address: 0,
+                }, S7Item {
+                    transport_size: Byte,
+                    length: 8,
+                    db_number: 5,
+                    area: 132,
+                    byte_address: 120,
+                    bit_address: 5,
+                }]),
+            })
+        );
+        assert_eq!(
+            parse_rule("write ! 1_1_0.0_8 5_2_120.5_8 5_3_3.0_8"),
+            Ok(S7CommSignature {
+                sign_type: S7SignatureType::ReadWrite, 
+                whitelist_mode: true,
+                rosctr: None,
+                function: Some(vec![WriteVariable]),
+                item: Some(vec![S7Item {
+                    transport_size: Bit,
+                    length: 8,
+                    db_number: 1,
+                    area: 132,
+                    byte_address: 0,
+                    bit_address: 0,
+                }, S7Item {
+                    transport_size: Byte,
+                    length: 8,
+                    db_number: 5,
+                    area: 132,
+                    byte_address: 120,
+                    bit_address: 5,
+                }, S7Item {
+                    transport_size: Char,
+                    length: 8,
+                    db_number: 5,
+                    area: 132,
+                    byte_address: 3,
+                    bit_address: 0,
+                }]),
+            })
+        );
+        assert_eq!(
+            parse_rule("read 5_2_120.5_8 1_1_0.0_8 5_3_3.0_8"),
+            Ok(S7CommSignature {
+                sign_type: S7SignatureType::ReadWrite, 
+                whitelist_mode: false,
+                rosctr: None,
+                function: Some(vec![ReadVariable]),
+                item: Some(vec![S7Item {
+                    transport_size: Byte,
+                    length: 8,
+                    db_number: 5,
+                    area: 132,
+                    byte_address: 120,
+                    bit_address: 5,
+                }, S7Item {
+                    transport_size: Bit,
+                    length: 8,
+                    db_number: 1,
+                    area: 132,
+                    byte_address: 0,
+                    bit_address: 0,
+                }, S7Item {
+                    transport_size: Char,
+                    length: 8,
+                    db_number: 5,
+                    area: 132,
+                    byte_address: 3,
+                    bit_address: 0,
+                }]),
+            })
+        );
+    }
 }
