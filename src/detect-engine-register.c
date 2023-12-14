@@ -191,6 +191,7 @@
 #include "detect-snmp-version.h"
 #include "detect-snmp-community.h"
 #include "detect-snmp-pdu_type.h"
+#include "detect-s7-s7.h"
 #include "detect-template-buffer.h"
 #include "detect-bypass.h"
 #include "detect-ftpdata.h"
@@ -563,6 +564,7 @@ void SigTableSetup(void)
     DetectSNMPVersionRegister();
     DetectSNMPCommunityRegister();
     DetectSNMPPduTypeRegister();
+    DetectS7S7Register();
     DetectTemplateBufferRegister();
     DetectBypassRegister();
 
