@@ -18,14 +18,15 @@
 use std;
 use crate::json::*;
 use super::s7::S7Transaction;
+use super::s7_constant::{S7Comm, S7Parameter};
 
 fn log_s7(tx: &S7Transaction) -> Option<Json> {
     let js = Json::object();
     if let Some(ref request) = tx.request {
-        js.set_string("request", request);
+        js.set_string("request", &format!("{:?}", request));
     }
     if let Some(ref response) = tx.response {
-        js.set_string("response", response);
+        js.set_string("response", &format!("{:?}", response));
     }
     return Some(js);
 }

@@ -15,7 +15,9 @@
  * 02110-1301, USA.
  */
 
-pub mod s7;
+
 pub mod logger;
 mod parser;
-pub mod detect;
+pub mod s7;
+mod detect;
+mod s7_constant;

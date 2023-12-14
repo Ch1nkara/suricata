@@ -23,13 +23,20 @@ use crate::parser::*;
 use std::ffi::CString;
 use nom;
 use super::parser;
+use super::s7_constant::{S7Comm};
+use super::s7_constant::{
+    INIT_FRAME_LENGTH, INIT_TPKT_VERSION, INIT_TPKT_RESERVED,
+    INIT_TPKT_INIT_LENGTH_1, INIT_TPKT_INIT_LENGTH_2,
+    COTP_CONNECT_REQUEST, COTP_CONNECT_CONFIRM, S7_PROTOCOLE_ID,
+    COTP_HEADER_LENGTH,TPKT_HEADER_LENGTH
+};
 
 static mut ALPROTO_S7: AppProto = ALPROTO_UNKNOWN;
 
 pub struct S7Transaction {
     tx_id: u64,
-    pub request: Option<String>,
-    pub response: Option<String>,
+    pub request: Option<S7Comm>,
+    pub response: Option<S7Comm>,
 
     logged: LoggerFlags,
     de_state: Option<*mut core::DetectEngineState>,
@@ -125,84 +132,56 @@ impl S7State {
     }
 
     fn parse_request(&mut self, input: &[u8]) -> bool {
-        // We're not interested in empty requests.
-        if input.len() == 0 {
-            return true;
+        /* handle non s7 parasite frames such as cotp handshakes*/
+        if is_malformed_s7(input) {
+            return true
         }
 
-        // For simplicity, always extend the buffer and work on it.
-        self.request_buffer.extend(input);
-
-        let tmp: Vec<u8>;
-        let mut current = {
-            tmp = self.request_buffer.split_off(0);
-            tmp.as_slice()
-        };
-
-        while current.len() > 0 {
-            match parser::parse_message(current) {
-                Ok((rem, request)) => {
-                    current = rem;
-
-                    SCLogNotice!("Request: {}", request);
-                    let mut tx = self.new_tx();
-                    tx.request = Some(request);
-                    self.transactions.push(tx);
-                }
-                Err(nom::Err::Incomplete(_)) => {
-                    self.request_buffer.extend_from_slice(current);
-                    break;
-                }
-                Err(_) => {
-                    return false;
-                }
+        match parser::s7_parse_message(input) {
+            Ok((_rem, request)) => {
+                SCLogNotice!("Parsing request ok: {:?}", request);
+                let mut tx = self.new_tx();
+                tx.request = Some(request);
+                self.transactions.push(tx);
+            }
+            Err(nom::Err::Incomplete(_)) => {
+                SCLogNotice!("Parsing response failed: ERR Incomplete");
+                return false;
+            }
+            Err(_) => {
+                                return false;
             }
         }
 
+        /* Input was fully consumed. */
         return true;
     }
 
     fn parse_response(&mut self, input: &[u8]) -> bool {
-        // We're not interested in empty responses.
-        if input.len() == 0 {
-            return true;
+        /* handle non s7 parasite frames such as cotp handshakes*/
+        if is_malformed_s7(input) {
+            return true
         }
 
-        // For simplicity, always extend the buffer and work on it.
-        self.response_buffer.extend(input);
-
-        let tmp: Vec<u8>;
-        let mut current = {
-            tmp = self.response_buffer.split_off(0);
-            tmp.as_slice()
-        };
-
-        while current.len() > 0 {
-            match parser::parse_message(current) {
-                Ok((rem, response)) => {
-                    current = rem;
-
-                    match self.find_request() {
-                        Some(tx) => {
-                            tx.response = Some(response);
-                            SCLogNotice!("Found response for request:");
-                            SCLogNotice!("- Request: {:?}", tx.request);
-                            SCLogNotice!("- Response: {:?}", tx.response);
-                        }
-                        None => {}
-                    }
+        match parser::s7_parse_message(input) {
+            Ok((_rem, response)) => {
+                SCLogNotice!("Parsing response ok: {:?}", response);
+                if let Some(tx) = self.find_request() {
+                    tx.response = Some(response);
+                    SCLogNotice!("Found response for request");
                 }
-                Err(nom::Err::Incomplete(_)) => {
-                    self.response_buffer.extend_from_slice(current);
-                    break;
-                }
-                Err(_) => {
-                    return false;
-                }
+            }
+            Err(nom::Err::Incomplete(_)) => {
+                SCLogNotice!("Parsing response failed: ERR Incomplete");
+                return false;
+            }
+            Err(err) => {
+                SCLogNotice!("Parsing response failed: {}", err);
+                return false;
             }
         }
 
-        return true;
+                return true;
     }
 
     fn tx_iterator(
@@ -227,14 +206,45 @@ impl S7State {
     }
 }
 
-/// Probe to see if this input looks like a request or response.
-///
-/// For the purposes of this s7 things will be kept simple. The
-/// protocol is text based with the leading text being the length of
-/// the message in bytes. So simply make sure the first character is
-/// between "1" and "9".
-fn probe(input: &[u8]) -> bool {
-    if input.len() > 1 && input[0] >= 49 && input[0] <= 57 {
+/* Probe for a s7 protocol. Since S7 is built on top of COTP,
+*  tcp connection is considered using s7 protocol if :
+*   - on port 102
+*   - valid COTP connection on top of TCP 
+* Not perfect but sufficient */
+fn probe(input: &[u8]) -> nom::IResult<&[u8], ()> {
+    SCLogNotice!("in prober function");
+    /* fail probe if PDU not the right size for comm setup */
+    if ! input.len() == INIT_FRAME_LENGTH { 
+        return Err(nom::Err::Error(nom::Context::Code(input, nom::ErrorKind::Eof)))
+    }
+
+    let (cotp_payload, tpkt_payload) = nom::take!(input, 4_usize)?;
+
+    /* fail probe if not the proper COTP initialisation */
+    if tpkt_payload != [INIT_TPKT_VERSION, 
+                        INIT_TPKT_RESERVED, 
+                        INIT_TPKT_INIT_LENGTH_1, 
+                        INIT_TPKT_INIT_LENGTH_2] || 
+       (cotp_payload[1] != COTP_CONNECT_REQUEST && cotp_payload[1] != COTP_CONNECT_CONFIRM)
+    {
+        return Err(nom::Err::Error(nom::Context::Code(input, nom::ErrorKind::Verify)))
+    }
+
+    SCLogNotice!("SUCCESS");
+    return Ok((&[], ()))
+}
+
+fn is_malformed_s7(input: &[u8]) -> bool{
+    //SCLogNotice!("malformed input: {:x?}", input);
+    /* Not interested in frames that contain only TPKT and COTP headers
+    *  but no S7 PDU */
+    if input.len() <= COTP_HEADER_LENGTH + TPKT_HEADER_LENGTH {
+        SCLogNotice!("req_parsing DONE, too short, length: {}", input.len());
+        return true;
+    }
+    /* Final check to verify that this is a s7 frame */
+    if input[COTP_HEADER_LENGTH + TPKT_HEADER_LENGTH] != S7_PROTOCOLE_ID {
+        SCLogNotice!("req_parsing DONE, wrong protocol, id: {:x?}", input[COTP_HEADER_LENGTH + TPKT_HEADER_LENGTH]);
         return true;
     }
     return false;
@@ -263,7 +273,7 @@ pub extern "C" fn rs_s7_probing_parser(
     // Need at least 2 bytes.
     if input_len > 1 && input != std::ptr::null_mut() {
         let slice = build_slice!(input, input_len as usize);
-        if probe(slice) {
+        if probe(slice).is_ok() {
             return unsafe { ALPROTO_S7 };
         }
     }
@@ -462,57 +472,12 @@ pub extern "C" fn rs_s7_state_get_tx_iterator(
     }
 }
 
-/// Get the request buffer for a transaction from C.
-///
-/// No required for parsing, but an example function for retrieving a
-/// pointer to the request buffer from C for detection.
-#[no_mangle]
-pub extern "C" fn rs_s7_get_request_buffer(
-    tx: *mut std::os::raw::c_void,
-    buf: *mut *const u8,
-    len: *mut u32,
-) -> u8
-{
-    let tx = cast_pointer!(tx, S7Transaction);
-    if let Some(ref request) = tx.request {
-        if request.len() > 0 {
-            unsafe {
-                *len = request.len() as u32;
-                *buf = request.as_ptr();
-            }
-            return 1;
-        }
-    }
-    return 0;
-}
-
-/// Get the response buffer for a transaction from C.
-#[no_mangle]
-pub extern "C" fn rs_s7_get_response_buffer(
-    tx: *mut std::os::raw::c_void,
-    buf: *mut *const u8,
-    len: *mut u32,
-) -> u8
-{
-    let tx = cast_pointer!(tx, S7Transaction);
-    if let Some(ref response) = tx.response {
-        if response.len() > 0 {
-            unsafe {
-                *len = response.len() as u32;
-                *buf = response.as_ptr();
-            }
-            return 1;
-        }
-    }
-    return 0;
-}
-
 // Parser name as a C style string.
 const PARSER_NAME: &'static [u8] = b"s7\0";
 
 #[no_mangle]
 pub unsafe extern "C" fn rs_s7_register_parser() {
-    let default_port = CString::new("[7000]").unwrap();
+    let default_port = CString::new("[102]").unwrap();
     let parser = RustParser {
         name: PARSER_NAME.as_ptr() as *const std::os::raw::c_char,
         default_port: default_port.as_ptr(),
