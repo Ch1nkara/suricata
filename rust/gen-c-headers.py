@@ -86,6 +86,8 @@ type_map = {
     "TFTPTransaction": "TFTPTransaction",
     "TFTPState": "TFTPState",
     "SMBState": "SMBState",
+    "S7Transaction":"S7Transaction",
+    "DetectS7Rust":"DetectS7Rust",
     "SMBTransaction": "SMBTransaction",
     "SNMPState": "SNMPState",
     "SNMPTransaction": "SNMPTransaction",
