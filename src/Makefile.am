@@ -47,6 +47,7 @@ app-layer-tftp.c app-layer-tftp.h \
 app-layer-ikev2.c app-layer-ikev2.h \
 app-layer-krb5.c app-layer-krb5.h \
 app-layer-dhcp.c app-layer-dhcp.h \
+app-layer-s7.c app-layer-s7.h \
 app-layer-template.c app-layer-template.h \
 app-layer-template-rust.c app-layer-template-rust.h \
 app-layer-rdp.c app-layer-rdp.h \
@@ -351,6 +352,7 @@ output-json-ikev2.c output-json-ikev2.h \
 output-json-krb5.c output-json-krb5.h \
 output-json-dhcp.c output-json-dhcp.h \
 output-json-snmp.c output-json-snmp.h \
+output-json-s7.c output-json-s7.h \
 output-json-template.c output-json-template.h \
 output-json-template-rust.c output-json-template-rust.h \
 output-json-rdp.c output-json-rdp.h \

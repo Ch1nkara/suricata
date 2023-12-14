@@ -68,6 +68,7 @@
 #include "app-layer-dhcp.h"
 #include "app-layer-snmp.h"
 #include "app-layer-sip.h"
+#include "app-layer-s7.h"
 #include "app-layer-template.h"
 #include "app-layer-template-rust.h"
 #include "app-layer-rdp.h"
@@ -1586,6 +1587,7 @@ void AppLayerParserRegisterProtocolParsers(void)
     RegisterSNMPParsers();
     RegisterSIPParsers();
     RegisterTemplateRustParsers();
+    RegisterS7Parsers();
     RegisterTemplateParsers();
     RegisterRdpParsers();
 

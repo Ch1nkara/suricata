@@ -145,6 +145,7 @@ outputs:
         header: X-Forwarded-For
 
       types:
+        - s7
         - alert:
             # payload: yes             # enable dumping payload in Base64
             # payload-buffer-size: 4kb # max size of payload buffer to output in eve-log
@@ -715,6 +716,8 @@ pcap-file:
 # "detection-only" enables protocol detection only (parser disabled).
 app-layer:
   protocols:
+    s7:
+      enabled: yes
     krb5:
       enabled: yes
     snmp:

@@ -66,5 +66,6 @@ pub mod ntp;
 pub mod tftp;
 pub mod dhcp;
 pub mod sip;
+pub mod applayers7;
 pub mod applayertemplate;
 pub mod rdp;
