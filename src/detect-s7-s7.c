@@ -41,6 +41,7 @@
 #include "rust.h"
 #include "rust-applayers7-s7-gen.h"
 #include "rust-applayers7-detect-gen.h"
+#include "rust-applayers7-rule_parser-gen.h"
 
 static int DetectS7S7Setup(DetectEngineCtx *, Signature *, const char *);
 #ifdef UNITTESTS
@@ -85,7 +86,7 @@ static int DetectS7S7Setup(DetectEngineCtx *de_ctx, Signature *s, const char *st
 {
     SCLogNotice("in detect s7 setup");
     SCEnter();
-    DetectS7Rust *s7 = NULL;
+    S7CommSignature *s7 = NULL;
     SigMatch        *sm = NULL;
     s->init_data->list = g_s7_rust_id;
 

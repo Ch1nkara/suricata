@@ -21,3 +21,4 @@ mod parser;
 pub mod s7;
 mod detect;
 mod s7_constant;
+mod rule_parser;

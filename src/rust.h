@@ -56,7 +56,7 @@ typedef struct NFSTransaction_ NFSTransaction;
 typedef struct SMBState_ SMBState;
 typedef struct SMBTransaction_ SMBTransaction;
 typedef struct S7Transaction_ S7Transaction;
-typedef struct DetectS7Rust_ DetectS7Rust;
+typedef struct S7CommSignature_ S7CommSignature;
 
 
 #endif /* !__RUST_H__ */
