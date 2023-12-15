@@ -63,7 +63,7 @@ fn add_item_if_present(param: &S7Parameter, js: &mut JsonBuilder) -> Result<(), 
         _ => return Ok(())
     };
     for (index, element) in item_list.iter().enumerate(){
-        js.open_object(&format!("item {}", index))?;
+        js.open_object(&format!("item {}", index + 1))?;
         js.set_string("transport_size", &format!("{:?}", element.transport_size))?;
         js.set_uint("length", element.length.into())?;
         js.set_uint("db_number", element.db_number.into())?;
